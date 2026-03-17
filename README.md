@@ -1,6 +1,9 @@
 # Computacion2
-Repositorio de la asignatura Computacion 2 
+Repositorio de la asignatura Computacion 2. Este repositorio contiene los trabajos, apuntes y ejercicios correspondientes a la materia.
 
-Alumno: Francisco Martín Gallardo
-Carrera: Ingeniería en Informática 
-Legajo: 64137
+## Datos Personales
+* **Estudiante:** Frnacisco Martín Gallardo
+* **Carrera:** Ingeniería en Informatica
+* **Año:** 2026
+
+---
