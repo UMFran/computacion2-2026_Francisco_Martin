@@ -1,0 +1,10 @@
+{
+    "usuario": {
+        "nombre": "Juan Pérez",
+        "email": "juan@example.com"
+    },
+    "productos": [
+        {"nombre": "Widget", "precio": 150.00}
+    ],
+    "total": 150.00
+}
