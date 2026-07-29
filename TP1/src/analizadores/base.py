@@ -27,9 +27,11 @@ def correr(nombre, snapshot, lock, intervalo, recolectar):
         # Ese __setitem__ es atómico de por sí (viaja como un pedido único al
         # proceso servidor del Manager, que los serializa). Como cada analizador
         # escribe SOLO su propia clave, no hay race ENTRE analizadores aunque no
-        # hubiera lock. Tomo el lock igual para que el LADO LECTOR (el display)
-        # pueda, con el mismo lock, congelar una foto consistente de varias
-        # claves a la vez sin que nadie escriba en el medio.
+        # hubiera lock. Tomo el lock igual para darle un propósito real al LADO
+        # LECTOR: el dump de SIGUSR1 (volcar_dump en main.py) toma este mismo lock
+        # para copiar las 7 claves de una, sin que ningún analizador escriba en el
+        # medio => foto coherente. El display NO lo toma (lee de a una clave, que
+        # ya es atómica, y a 10 fps no vale la pena la contención).
         with lock:
             snapshot[nombre] = {"datos": datos, "ts": time.time()}
         # -----------------------------------------------------------------

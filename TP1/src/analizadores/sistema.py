@@ -43,7 +43,7 @@ def crear_recolector(verbose):
             try:
                 st = procfs.leer_stat(pid)
                 status = procfs.leer_status(pid)
-            except (FileNotFoundError, ProcessLookupError, KeyError, IndexError, ValueError):
+            except procfs.ERRORES_PROC:
                 continue
             estado = st["estado"]
             conteo[estado] = conteo.get(estado, 0) + 1

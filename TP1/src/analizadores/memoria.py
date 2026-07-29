@@ -23,7 +23,7 @@ def crear_recolector(verbose):
                     "majflt": st["majflt"],
                     "segmentos": segmentos,
                 })
-            except (FileNotFoundError, ProcessLookupError, KeyError, IndexError, ValueError):
+            except procfs.ERRORES_PROC:
                 continue
         # ordenamos por RSS descendente (los que no tienen RSS van al final)
         procesos.sort(key=lambda p: p["vm"].get("VmRSS") or 0, reverse=True)

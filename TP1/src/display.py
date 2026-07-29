@@ -305,9 +305,9 @@ class Display:
         if not p:
             return Text("(proceso ya no está)")
         vm = p["vm"]
-        linea1 = "   ".join(f"{k}={vm[k]}" for k in
-                            ("VmSize", "VmRSS", "VmHWM", "VmData", "VmStk", "VmExe", "VmLib", "VmSwap")
-                            if vm.get(k) is not None)
+        campos_vm = ("VmSize", "VmRSS", "VmHWM", "VmData",
+                     "VmStk", "VmExe", "VmLib", "VmSwap")
+        linea1 = "   ".join(f"{k}={vm[k]}" for k in campos_vm if vm.get(k) is not None)
         t = Table(title=None, expand=True)
         for c in ("segmento", "count", "kB"):
             t.add_column(c, justify="right" if c != "segmento" else "left")
@@ -418,7 +418,8 @@ class Display:
             import tty
             fd = sys.stdin.fileno()
             old = termios.tcgetattr(fd)
-            tty.setcbreak(fd)   # cbreak (no raw): deja ISIG activo => Ctrl+C sigue disparando SIGINT
+            # cbreak (no raw): deja ISIG activo => Ctrl+C sigue disparando SIGINT
+            tty.setcbreak(fd)
             lector = LectorTeclado(self.on_key)
             lector.start()
 

@@ -18,6 +18,13 @@ TABLA_SENALES = {s.value: s.name for s in _signal.Signals}
 # Política de scheduling: campo 41 de stat es un número; lo pasamos a nombre.
 POLITICAS_SCHED = {0: "OTHER", 1: "FIFO", 2: "RR", 3: "BATCH", 5: "IDLE", 6: "DEADLINE"}
 
+# Errores esperables al leer /proc de un proceso puntual; el analizador lo saltea
+# en vez de caerse. Cubre: el proceso desapareció (FileNotFound/ProcessLookup),
+# está protegido y no somos su dueño ni root (Permission), o una lectura devolvió
+# algo inesperado (Key/Index/Value). Un único lugar para que los 7 sean iguales.
+ERRORES_PROC = (FileNotFoundError, ProcessLookupError, PermissionError,
+                KeyError, IndexError, ValueError)
+
 
 # --------------------------------------------------------------------------- #
 # Básico (Día 1)
@@ -55,9 +62,9 @@ def leer_stat(pid):
         "stime": int(resto[12]),       # campo 15
         "priority": int(resto[15]),    # campo 18
         "nice": int(resto[16]),        # campo 19
-        "num_threads": int(resto[17]), # campo 20
+        "num_threads": int(resto[17]),  # campo 20
         "starttime": int(resto[19]),   # campo 22
-        "rt_priority": int(resto[37]), # campo 40
+        "rt_priority": int(resto[37]),  # campo 40
         "policy": int(resto[38]),      # campo 41
     }
 
@@ -181,7 +188,7 @@ def leer_fds(pid, limite=None):
     for nombre in os.listdir(ruta):
         try:
             destino = os.readlink(f"{ruta}/{nombre}")
-        except (FileNotFoundError, ProcessLookupError):
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
             continue  # el FD se cerró entre el listdir y el readlink
         t = tipo_fd(destino)
         res["total"] += 1
@@ -208,7 +215,7 @@ def leer_threads(pid):
                 comm = f.read().strip()
             with open(f"{base}/{tid}/status") as f:
                 st = _parsear_status(f)
-        except (FileNotFoundError, ProcessLookupError):
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
             continue
         hilos.append({
             "tid": int(tid),

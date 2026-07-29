@@ -83,11 +83,18 @@ def recargar_config(componentes):
           f"{ {n: round(v.value, 1) for n, (_, v) in componentes.items()} }")
 
 
-def volcar_dump(snapshot):
-    """SIGUSR1: guarda el snapshot actual a dump_<timestamp>.json."""
+def volcar_dump(snapshot, lock):
+    """SIGUSR1: guarda el snapshot actual a dump_<timestamp>.json.
+
+    Toma el `lock` para copiar las 7 claves: mientras lo tenemos, ningún
+    analizador puede escribir (todos escriben bajo el mismo lock), así el dump
+    es una foto coherente y no una mezcla de claves de instantes distintos.
+    La copia bajo lock es rápida; el volcado a disco (lento) ya va fuera del lock.
+    """
     ts = int(time.time())
     ruta = os.path.join(RAIZ, f"dump_{ts}.json")
-    plano = {nombre: dict(entrada) for nombre, entrada in snapshot.items()}
+    with lock:
+        plano = {nombre: dict(entrada) for nombre, entrada in snapshot.items()}
     with open(ruta, "w") as f:
         json.dump(plano, f, indent=2, default=str)
     print(f"[SIGUSR1] snapshot volcado a {os.path.basename(ruta)}")
@@ -120,7 +127,7 @@ def main():
             recargar_config(componentes)
         if estado.dump:
             estado.dump = False
-            volcar_dump(snapshot)
+            volcar_dump(snapshot, lock)
         if estado.toggle_verbose:
             estado.toggle_verbose = False
             toggle_verbose(verbose)
