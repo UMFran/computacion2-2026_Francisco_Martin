@@ -1,0 +1,2 @@
+# TUI del monitor (Día 4). rich da tablas/paneles con poco esfuerzo.
+rich>=13.0
