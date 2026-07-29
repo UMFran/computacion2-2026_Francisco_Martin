@@ -1,0 +1,13 @@
+services:
+  monitor:
+    build: .
+    # Interactivo para cuando el Día 5 metamos la TUI.
+    tty: true
+    stdin_open: true
+    # Montamos el repo en /app: así editás config.json en Windows y el monitor
+    # lo relee con SIGHUP, y los dump_<ts>.json aparecen en tu carpeta.
+    volumes:
+      - .:/app
+    # Nota: sin `pid: "host"`, el contenedor ve SOLO sus propios procesos.
+    # Para el Día 1 alcanza (desarrollamos el parser contra los procesos del
+    # contenedor). El acceso a los procesos del host lo evaluamos en el Día 5.
