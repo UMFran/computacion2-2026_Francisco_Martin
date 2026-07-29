@@ -14,11 +14,12 @@ def crear_recolector(verbose):
             try:
                 st = procfs.leer_stat(pid)
                 info = procfs.leer_fds(pid, limite=limite)
-            except (FileNotFoundError, ProcessLookupError, KeyError, IndexError, ValueError):
-                continue
             except PermissionError:
-                # No podemos leer los FDs de un proceso de otro usuario.
+                # FDs de un proceso de otro usuario: lo mostramos como inaccesible
+                # (va PRIMERO para que no lo tape el except genérico de abajo).
                 procesos.append({"pid": pid, "comm": st["comm"], "error": "permiso denegado"})
+                continue
+            except procfs.ERRORES_PROC:
                 continue
             procesos.append({
                 "pid": pid,

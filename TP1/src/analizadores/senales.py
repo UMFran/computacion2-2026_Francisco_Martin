@@ -22,7 +22,7 @@ def crear_recolector(verbose):
             try:
                 st = procfs.leer_stat(pid)
                 status = procfs.leer_status(pid)
-            except (FileNotFoundError, ProcessLookupError, KeyError, IndexError, ValueError):
+            except procfs.ERRORES_PROC:
                 continue
             decodificadas = {}
             for concepto, clave in MASCARAS.items():

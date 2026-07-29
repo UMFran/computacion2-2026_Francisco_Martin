@@ -42,7 +42,7 @@ def crear_recolector(verbose):
                     "cpu": round(cpu, 1),
                     "cmd": procfs.leer_cmdline(pid) or f"[{st['comm']}]",
                 })
-            except (FileNotFoundError, ProcessLookupError, KeyError, IndexError, ValueError):
+            except procfs.ERRORES_PROC:
                 continue
 
         prev.clear()

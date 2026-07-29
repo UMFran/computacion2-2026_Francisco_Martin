@@ -22,7 +22,7 @@ def crear_recolector(verbose):
             try:
                 st = procfs.leer_stat(pid)
                 hilos_raw = procfs.leer_threads(pid)
-            except (FileNotFoundError, ProcessLookupError, KeyError, IndexError, ValueError):
+            except procfs.ERRORES_PROC:
                 continue
 
             hilos = []
