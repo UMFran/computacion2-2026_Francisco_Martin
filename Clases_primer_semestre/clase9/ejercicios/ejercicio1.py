@@ -6,7 +6,7 @@ import random
 
 def cuadrado(x):
     """Tarea con duración variable para apreciar las diferencias."""
-    duracion = random.uniform(0.1, 1.0)
+    duracion = random.uniform(0.1, 7.0)
     time.sleep(duracion)
     return x ** 2
 
