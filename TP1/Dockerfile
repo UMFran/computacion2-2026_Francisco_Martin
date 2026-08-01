@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# procps trae `ps` para poder validar el monitor contra `ps -eLf` (Día 1).
+# procps trae `ps`, para poder validar el monitor contra `ps -eLf`.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends procps \
     && rm -rf /var/lib/apt/lists/*

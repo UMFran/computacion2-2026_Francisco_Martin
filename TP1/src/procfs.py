@@ -27,7 +27,7 @@ ERRORES_PROC = (FileNotFoundError, ProcessLookupError, PermissionError,
 
 
 # --------------------------------------------------------------------------- #
-# Básico (Día 1)
+# Básico: listar PIDs y parsear stat / status / cmdline
 # --------------------------------------------------------------------------- #
 def listar_pids():
     """PIDs actuales: las carpetas cuyo nombre es un número en /proc."""
@@ -112,7 +112,7 @@ def nombre_usuario(uid):
 
 
 # --------------------------------------------------------------------------- #
-# Memoria (Día 3)
+# Memoria: campos Vm* de status y segmentos de /proc/<pid>/maps
 # --------------------------------------------------------------------------- #
 def _kb(status, clave):
     """Toma 'VmRSS' -> '1234 kB' del status y devuelve el int 1234 (o None)."""
@@ -163,7 +163,7 @@ def leer_maps(pid):
 
 
 # --------------------------------------------------------------------------- #
-# File descriptors (Día 3)
+# File descriptors: listar y clasificar /proc/<pid>/fd
 # --------------------------------------------------------------------------- #
 def tipo_fd(destino):
     """Infiere el tipo de un FD a partir del destino del symlink."""
@@ -199,7 +199,7 @@ def leer_fds(pid, limite=None):
 
 
 # --------------------------------------------------------------------------- #
-# Threads / LWPs (Día 3)
+# Threads / LWPs: datos por hilo desde /proc/<pid>/task
 # --------------------------------------------------------------------------- #
 def leer_threads(pid):
     """Un dict por thread (LWP) del proceso, desde /proc/<pid>/task/<tid>/.
@@ -229,7 +229,7 @@ def leer_threads(pid):
 
 
 # --------------------------------------------------------------------------- #
-# Señales (info) (Día 3)
+# Señales: decodificar las máscaras hexadecimales de status
 # --------------------------------------------------------------------------- #
 def decodificar_mascara(hexstr):
     """Convierte una máscara hex de 64 bits (SigBlk/SigIgn/...) a nombres.
@@ -244,7 +244,7 @@ def decodificar_mascara(hexstr):
 
 
 # --------------------------------------------------------------------------- #
-# Sistema global (Día 3)
+# Sistema global: /proc/stat, meminfo, loadavg y uptime
 # --------------------------------------------------------------------------- #
 def leer_cpu_global():
     """Línea 'cpu' de /proc/stat: [user, nice, system, idle, iowait, ...] en jiffies."""

@@ -57,14 +57,17 @@ Para salir: `q` (o `Ctrl+C`).
 
 ### Señales que responde el monitor
 
-Con el monitor corriendo (PID 1 dentro del contenedor), desde otra terminal:
+Como el contenedor usa `pid: "host"`, el monitor **no** es PID 1: muestra su propio
+**PID** en el header de la TUI (`pid=...`). Usá ese número (no lo mandes a un analizador
+hijo, que no tiene los handlers). Desde otra terminal:
 
 ```bash
 docker compose exec monitor sh
-kill -USR1 1   # dump del snapshot a dump_<timestamp>.json
-kill -USR2 1   # toggle modo verbose
-kill -HUP  1   # releer config.json (intervalos) en caliente
-kill -TERM 1   # shutdown limpio (igual que SIGINT / Ctrl+C)
+# PID = el que muestra el header de la TUI, ej. 12345
+kill -USR1 <PID>   # dump del snapshot a dump_<timestamp>.json
+kill -USR2 <PID>   # toggle modo verbose
+kill -HUP  <PID>   # releer config.json (intervalos) en caliente
+kill -TERM <PID>   # shutdown limpio (igual que SIGINT / Ctrl+C)
 ```
 
 ## 3. Arquitectura
@@ -234,9 +237,11 @@ literalmente el que "mantiene el snapshot global en memoria compartida".
   marca como opcional/recomendado.
 - **Interacción de teclado solo con `docker compose run`**, no con `docker compose up`
   (ver *Cómo correr*).
-- **Solo veo procesos del contenedor**: sin `pid: "host"` en el compose, el monitor ve los
-  procesos de su propio namespace (el monitor + sus analizadores). Me alcanza para demostrar
-  todo, pero no es "todo el host". Se puede ampliar agregando `pid: "host"`.
+- **En Docker Desktop veo la VM Linux, no Windows**: con `pid: "host"` el monitor ve los
+  procesos de todo el host. En Linux nativo eso es el sistema completo (como `htop`); en
+  Docker Desktop (Windows/Mac) el "host" es la VM de LinuxKit, así que se ven sus procesos
+  (bastantes menos). Para leer FDs y segmentos de memoria de procesos ajenos agrego la
+  capability `SYS_PTRACE` en el compose.
 - **CPU% puede superar 100%**: es por core; un proceso multihilo puede pasar de 100%
   (convención tipo `htop`), no es un error.
 - **No hice extensiones bonus** (histórico, detección de anomalías, árbol de procesos, etc.).

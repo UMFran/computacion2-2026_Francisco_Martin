@@ -1,21 +1,21 @@
-"""Loop genérico de un analizador (Día 2: esqueleto con datos de prueba).
+"""Loop común que corre cada analizador (un PROCESO independiente por vista).
 
-Cada analizador es un PROCESO independiente (no thread). Todos corren el mismo
-loop `correr()`, parametrizado por:
+Todos los analizadores comparten este loop `correr()`; lo único que cambia entre
+ellos es la función `recolectar` que se les pasa. Parámetros:
   - nombre: la clave que le toca en el snapshot ('resumen', 'memoria', ...).
   - snapshot: el Manager().dict() compartido.
-  - lock: lock compartido (ver nota abajo sobre cuándo hace falta).
+  - lock: lock compartido (ver nota en el punto de escritura).
   - intervalo: un multiprocessing.Value('d') con el período de refresco. Se
     relee en CADA vuelta, así el display puede ajustarlo en vivo con +/-.
   - recolectar: callable() -> dict con los datos de esta dimensión.
-
-Mañana, cada analizador real va a pasar su propio `recolectar`; el loop no cambia.
 """
 import os
 import time
 
 
 def correr(nombre, snapshot, lock, intervalo, recolectar):
+    # Ciclo de vida del analizador: recolectar -> publicar en el snapshot ->
+    # dormir el intervalo, para siempre (hasta que el padre lo termine).
     while True:
         datos = recolectar()
 
@@ -40,11 +40,11 @@ def correr(nombre, snapshot, lock, intervalo, recolectar):
 
 
 def stub_recolectar(nombre):
-    """Fábrica de un `recolectar` de prueba para el Día 2.
+    """Fábrica de un `recolectar` de PRUEBA (datos ficticios), sin leer /proc.
 
-    Devuelve un contador incremental + el PID del proceso analizador, así en el
-    supervisor vemos que el snapshot se actualiza y sabemos qué PID matar en la
-    prueba de kill -9. Mañana esto lo reemplaza la lectura real de /proc.
+    La usa dia2_lister.py para mostrar la arquitectura multiproceso "en crudo".
+    Devuelve un contador incremental + el PID del proceso analizador, así se ve
+    que el snapshot se actualiza y se sabe qué PID matar en la prueba de kill -9.
     """
     estado = {"n": 0}
 

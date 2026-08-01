@@ -1,4 +1,4 @@
-"""Día 4 — TUI del monitor (rich).
+"""TUI del monitor (rich): lista de procesos + panel de detalle por vista.
 
 Corre en el proceso principal (el mismo que maneja señales). Lee el snapshot
 compartido y lo renderiza: una lista de procesos arriba + un panel de detalle
@@ -101,6 +101,7 @@ class Display:
     # Teclado
     # ------------------------------------------------------------------ #
     def on_key(self, k):
+        """Traduce una tecla a un cambio de estado de la UI. Lo llama el thread de teclado."""
         if k is None:
             return
         with self._lock:
@@ -132,6 +133,7 @@ class Display:
                 self.estado.salir = True
 
     def _key_input(self, k):
+        """Tipeo dentro de un filtro (`/` o `u`): arma el buffer hasta Enter/Esc."""
         if k == "ENTER":
             if self.modo_input == "cmd":
                 self.filtro_cmd = self.buffer.strip()
@@ -146,6 +148,7 @@ class Display:
             self.buffer += k
 
     def _toggle_pin(self):
+        """Fija (o suelta) el proceso seleccionado para que no se mueva al reordenar."""
         filas = self._filas_lista()
         if not filas:
             return
@@ -154,6 +157,7 @@ class Display:
         self.pin = None if self.pin == pid else pid
 
     def _ajustar_intervalo(self, k):
+        """`+`/`-`: sube o baja el intervalo de la vista activa escribiendo a su Value."""
         _, intervalo = self.componentes[self.vista]
         if k == "+":
             intervalo.value = min(MAX_INT, intervalo.value + PASO_INT)
@@ -199,6 +203,7 @@ class Display:
         return filas
 
     def _proc_de_vista(self, nombre, pid):
+        """Busca en los datos de una vista el dict del proceso `pid` (o None)."""
         datos, _ = self._leer(nombre)
         for p in (datos.get("procesos", []) if datos else []):
             if p["pid"] == pid:
@@ -209,6 +214,7 @@ class Display:
     # Render
     # ------------------------------------------------------------------ #
     def render(self):
+        """Arma el frame completo: cabecera + lista de procesos + detalle (o ayuda) + pie."""
         with self._lock:
             filas = self._filas_lista()
 
@@ -231,6 +237,7 @@ class Display:
             return Group(*partes)
 
     def _cabecera(self, n):
+        """Barra de estado de arriba: vista activa, intervalo, orden, verbose, filtros y pin."""
         _, intervalo = self.componentes[self.vista]
         _, ts = self._leer(self.vista)
         edad = (time.time() - ts) if ts else float("inf")
@@ -242,7 +249,7 @@ class Display:
         txt = (f"[b]MONITOR[/b]  vista=[b cyan]{TITULOS[self.vista]}[/b cyan]  "
                f"cada={intervalo.value:.1f}s (dato hace {edad:.1f}s)  "
                f"orden={self.orden}  verbose={'ON' if self.verbose.value else 'OFF'}  "
-               f"procs={n}")
+               f"procs={n}  pid={os.getpid()}")   # pid del monitor, para mandarle señales
         if filtros:
             txt += "  filtros: " + " ".join(filtros)
         if self.pin is not None:
@@ -250,6 +257,7 @@ class Display:
         return Panel(txt, style="white on grey19", expand=True)
 
     def _tabla_lista(self, filas, sel):
+        """Tabla superior de procesos, con una ventana alrededor del seleccionado."""
         t = Table(expand=True, pad_edge=False)
         for col, just in (("PID", "right"), ("USUARIO", "left"), ("S", "center"),
                           ("CPU%", "right"), ("RSS(kB)", "right"),
@@ -274,6 +282,7 @@ class Display:
         return t
 
     def _panel_detalle(self, pid):
+        """Panel inferior: detalle según la vista (Sistema es global; el resto, por proceso)."""
         vista = self.vista
         if vista == "sistema":
             return self._detalle_sistema()
@@ -291,6 +300,7 @@ class Display:
         return Panel(cuerpo, title=f"{TITULOS[vista]} · PID {pid}", expand=True)
 
     def _detalle_resumen(self, pid):
+        """Detalle Resumen: identidad (PID/PPID/UID/GID/usuario), estado, threads y comando."""
         p = self._proc_de_vista("resumen", pid)
         if not p:
             return Text("(proceso ya no está)")
@@ -301,6 +311,7 @@ class Display:
             f"cmd: {p['cmd']}")
 
     def _detalle_memoria(self, pid):
+        """Detalle Memoria: campos Vm*, page faults y la tabla de segmentos."""
         p = self._proc_de_vista("memoria", pid)
         if not p:
             return Text("(proceso ya no está)")
@@ -317,6 +328,7 @@ class Display:
                      Text(f"page faults: minor={p['minflt']}  major={p['majflt']}"), t)
 
     def _detalle_fds(self, pid):
+        """Detalle FDs: total y tabla de descriptores (FD, tipo, destino del symlink)."""
         p = self._proc_de_vista("fds", pid)
         if not p:
             return Text("(proceso ya no está)")
@@ -331,6 +343,7 @@ class Display:
         return Group(Text(f"total FDs: {p['total']}   ({resumen_tipos})"), t)
 
     def _detalle_threads(self, pid):
+        """Detalle Threads: un renglón por LWP (TID, nombre, estado, CPU%, ctx switches)."""
         p = self._proc_de_vista("threads", pid)
         if not p:
             return Text("(proceso ya no está)")
@@ -344,6 +357,7 @@ class Display:
         return Group(Text(f"{len(p['hilos'])} threads (LWPs)"), t)
 
     def _detalle_senales(self, pid):
+        """Detalle Señales: las 5 máscaras decodificadas a nombres."""
         p = self._proc_de_vista("senales", pid)
         if not p:
             return Text("(proceso ya no está)")
@@ -359,6 +373,7 @@ class Display:
         return Text("\n".join(lineas))
 
     def _detalle_scheduling(self, pid):
+        """Detalle Scheduling: nice/priority/policy, afinidad, ctx switches, tiempos y SID/PGID."""
         p = self._proc_de_vista("scheduling", pid)
         if not p:
             return Text("(proceso ya no está)")
@@ -370,6 +385,7 @@ class Display:
             f"utime {p['utime']}  stime {p['stime']}   SID {p['sid']}  PGID {p['pgid']}")
 
     def _detalle_sistema(self):
+        """Detalle Sistema (global): CPU, memoria, load, conteos, zombies y tops."""
         d, ts = self._leer("sistema")
         if not d:
             return Panel(Text("Esperando datos del sistema..."), title=TITULOS["sistema"])
@@ -391,6 +407,7 @@ class Display:
         return Panel(cuerpo, title=TITULOS["sistema"], expand=True)
 
     def _panel_ayuda(self):
+        """Overlay con la lista de teclas (reemplaza el panel de detalle al apretar h/?)."""
         ayuda = (
             "1-7 / r m f t s p g : cambiar vista\n"
             "↑ ↓ : navegar     Enter : pin/unpin del proceso\n"
@@ -400,6 +417,7 @@ class Display:
         return Panel(Text(ayuda), title="Ayuda", expand=True)
 
     def _pie(self):
+        """Pie: la línea de ayuda breve, o el prompt del filtro si estás tipeando."""
         if self.modo_input:
             etiqueta = "filtrar comando" if self.modo_input == "cmd" else "filtrar usuario"
             return Panel(Text(f"{etiqueta}: {self.buffer}▌  (Enter=aceptar, Esc=cancelar)"),
@@ -410,6 +428,7 @@ class Display:
 
     # ------------------------------------------------------------------ #
     def run(self, procesar_senales):
+        """Bucle principal: prepara el teclado, redibuja y atiende señales hasta salir."""
         es_tty = sys.stdin.isatty()
         old = None
         lector = None

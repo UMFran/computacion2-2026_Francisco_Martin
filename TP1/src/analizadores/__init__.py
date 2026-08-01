@@ -1,6 +1,6 @@
 """Paquete de analizadores del monitor.
 
-Día 2: solo existe el loop genérico (base.py) con datos de prueba. Mañana cada
-dimensión (resumen, memoria, fds, threads, senales, scheduling, sistema) tendrá
-su propio módulo con la lógica real de lectura de /proc.
+Un módulo por dimensión (resumen, memoria, fds, threads, senales, scheduling,
+sistema). Cada uno expone `crear_recolector(verbose)` que devuelve la función
+encargada de leer /proc para esa dimensión. El loop común está en base.py.
 """
