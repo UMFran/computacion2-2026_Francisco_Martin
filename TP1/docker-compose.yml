@@ -1,13 +1,19 @@
 services:
   monitor:
     build: .
-    # Interactivo para cuando el Día 5 metamos la TUI.
+    # Contenedor interactivo: la TUI necesita una terminal (TTY) y stdin abierto.
     tty: true
     stdin_open: true
-    # Montamos el repo en /app: así editás config.json en Windows y el monitor
-    # lo relee con SIGHUP, y los dump_<ts>.json aparecen en tu carpeta.
+    # Ve los procesos de TODO el host, no solo los del contenedor (como htop).
+    # Efecto colateral: con esto el monitor deja de ser PID 1 (pasa a ser un
+    # proceso normal con un PID del host).
+    pid: "host"
+    # SYS_PTRACE: permite leer /proc/<pid>/fd y /proc/<pid>/maps de procesos de
+    # otros usuarios. Sin esta capability, las vistas FDs y Memoria mostrarían
+    # "permiso denegado" en la mayoría de los procesos del host.
+    cap_add:
+      - SYS_PTRACE
+    # Monta el repo en /app: editás config.json y el monitor lo relee con SIGHUP,
+    # y los dump_<ts>.json aparecen en tu carpeta.
     volumes:
       - .:/app
-    # Nota: sin `pid: "host"`, el contenedor ve SOLO sus propios procesos.
-    # Para el Día 1 alcanza (desarrollamos el parser contra los procesos del
-    # contenedor). El acceso a los procesos del host lo evaluamos en el Día 5.

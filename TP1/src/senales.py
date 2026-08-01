@@ -37,5 +37,6 @@ def instalar(estado):
     signal.signal(signal.SIGHUP, hacer("recargar"))
     signal.signal(signal.SIGUSR1, hacer("dump"))
     signal.signal(signal.SIGUSR2, hacer("toggle_verbose"))
-    # SIGWINCH (repintar al redimensionar) es opcional: lo dejamos para el Día 5
-    # junto con la TUI, cuando haya una pantalla real que repintar.
+    # SIGWINCH (redimensionado de la terminal) no se maneja: rich redibuja el
+    # frame completo en cada tick, así que el redimensionado se corrige solo en
+    # el refresco siguiente.

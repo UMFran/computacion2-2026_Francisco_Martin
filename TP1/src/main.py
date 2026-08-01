@@ -1,4 +1,4 @@
-"""Día 4 — Orquestador: 7 analizadores + señales + TUI (rich).
+"""Punto de entrada del monitor: levanta toda la arquitectura y la TUI.
 
 Arquitectura:
   - Manager().dict() = snapshot global (7 claves con {datos, ts}).
