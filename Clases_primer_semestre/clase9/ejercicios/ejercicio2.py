@@ -8,7 +8,7 @@ def cpu_task(n):
     """Tarea CPU-intensive: sumar raíces cuadradas."""
     return sum(math.sqrt(i) for i in range(n))
 
-N = 500_000
+N = 500000
 TAREAS = 8
 
 if __name__ == "__main__":
@@ -19,10 +19,10 @@ if __name__ == "__main__":
     print(f"Secuencial:  {t_seq:.2f}s")
 
     # Con distintos números de workers
-    for workers in [1, 2, 4, 8]:
-        inicio = time.time()
+    for workers in [1, 2, 4, 8, 32, 64, 128]:
         with Pool(workers) as pool:
+            inicio = time.time()
             resultados = pool.map(cpu_task, [N] * TAREAS)
-        t_par = time.time() - inicio
+            t_par = time.time() - inicio
         speedup = t_seq / t_par
         print(f"Pool({workers}):    {t_par:.2f}s  (speedup: {speedup:.2f}x)")

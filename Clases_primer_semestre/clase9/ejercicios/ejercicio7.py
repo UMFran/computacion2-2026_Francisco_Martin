@@ -61,12 +61,11 @@ Preguntas:
 
 Respuestas
 Si una etapa es mucho más lenta que las otras:
-
 el pipeline se queda limitado por esa etapa lenta
 las colas acumulan datos entre etapas hasta cierto punto
 las etapas más rápidas terminarán esperando, porque la etapa lenta se convierte en cuello de botella
-Cómo escalar la etapa lenta:
 
+Cómo escalar la etapa lenta:
 añadir más procesos para esa etapa lenta
 usar múltiples workers que lean de la misma cola de entrada y escriban en la misma cola de salida
 así se paraleliza la etapa lenta y se mejora el throughput
