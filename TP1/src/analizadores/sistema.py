@@ -14,7 +14,7 @@ def crear_recolector(verbose):
     prev_proc = {}         # {pid: jiffies}
     prev_t = [None]
 
-    def recolectar():
+    def recolectar(pids):
         ahora = time.time()
         dt = (ahora - prev_t[0]) if prev_t[0] else None
 
@@ -39,7 +39,7 @@ def crear_recolector(verbose):
         nuevos = {}
         por_cpu = []
         por_mem = []
-        for pid in procfs.listar_pids():
+        for pid in pids:
             try:
                 st = procfs.leer_stat(pid)
                 status = procfs.leer_status(pid)

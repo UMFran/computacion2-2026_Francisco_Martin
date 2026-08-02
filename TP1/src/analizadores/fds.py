@@ -7,10 +7,10 @@ import procfs
 
 
 def crear_recolector(verbose):
-    def recolectar():
+    def recolectar(pids):
         limite = None if verbose.value else 10
         procesos = []
-        for pid in procfs.listar_pids():
+        for pid in pids:
             try:
                 st = procfs.leer_stat(pid)
                 info = procfs.leer_fds(pid, limite=limite)

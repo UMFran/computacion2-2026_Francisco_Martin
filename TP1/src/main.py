@@ -1,20 +1,21 @@
 """Punto de entrada del monitor: levanta toda la arquitectura y la TUI.
 
 Arquitectura:
+  - Recolector: un proceso que lista los PIDs de /proc y los reparte a los
+    analizadores por Queue (descubrimiento de procesos centralizado).
   - Manager().dict() = snapshot global (7 claves con {datos, ts}).
   - 7 procesos analizadores, cada uno con su Value('d') de intervalo.
   - lock compartido para coordinar el snapshot.
   - Value('i') `verbose` compartido (SIGUSR2 lo togglea).
   - handlers de señales que solo prenden flags; el loop de la TUI actúa.
   - Display (rich) en el proceso principal, lee el snapshot y renderiza.
-
-Para la versión con supervisor de texto (sin TUI), ver dia3_lister.py.
 """
 import json
 import multiprocessing as mp
 import os
 import time
 
+import recolector
 import senales
 from display import Display
 from analizadores import (resumen, memoria, fds, threads,
@@ -22,6 +23,9 @@ from analizadores import (resumen, memoria, fds, threads,
 
 RAIZ = os.path.join(os.path.dirname(__file__), "..")
 CONFIG = os.path.join(RAIZ, "config.json")
+
+# Cada cuánto el Recolector relista /proc y reparte los PIDs (segundos).
+INTERVALO_RECOLECTOR = 1.0
 
 # nombre -> módulo analizador. El orden fija el orden de impresión.
 MODULOS = {
@@ -48,21 +52,24 @@ def construir_snapshot(manager):
 
 
 def lanzar_analizadores(snapshot, lock, verbose, cfg):
-    """Crea Values de intervalo y arranca los 7 procesos.
-    Devuelve {nombre: (Process, Value_intervalo)}."""
+    """Crea, por analizador, su Value de intervalo y su Queue de PIDs, y arranca
+    los 7 procesos. Devuelve ({nombre: (Process, Value_intervalo)}, [Queues])."""
     from analizadores import base
     componentes = {}
+    colas = []
     for nombre, modulo in MODULOS.items():
         intervalo = mp.Value("d", cfg["intervalos"][nombre])
+        cola = mp.Queue()                       # el recolector le empuja los PIDs
         recolectar = modulo.crear_recolector(verbose)
         p = mp.Process(
             target=base.correr,
-            args=(nombre, snapshot, lock, intervalo, recolectar),
+            args=(nombre, snapshot, lock, intervalo, recolectar, cola),
             name=f"analizador-{nombre}",
         )
         p.start()
         componentes[nombre] = (p, intervalo)
-    return componentes
+        colas.append(cola)
+    return componentes, colas
 
 
 # --------------------------------------------------------------------------- #
@@ -114,7 +121,13 @@ def main():
     lock = mp.Lock()
     verbose = mp.Value("i", 1 if cfg.get("verbose") else 0)
 
-    componentes = lanzar_analizadores(snapshot, lock, verbose, cfg)
+    componentes, colas = lanzar_analizadores(snapshot, lock, verbose, cfg)
+
+    # Proceso Recolector: lista /proc y reparte los PIDs a los analizadores.
+    recolector_p = mp.Process(target=recolector.correr,
+                              args=(INTERVALO_RECOLECTOR, colas),
+                              name="recolector")
+    recolector_p.start()
 
     estado = senales.EstadoSenales()
     senales.instalar(estado)
@@ -136,10 +149,16 @@ def main():
     try:
         display.run(procesar_senales)
     finally:
+        # Cortamos primero el productor (recolector) y después los consumidores.
+        recolector_p.terminate()
         for p, _ in componentes.values():
             p.terminate()
+        recolector_p.join()
         for p, _ in componentes.values():
             p.join()
+        # Las Queues pueden tener PIDs sin consumir; no bloqueamos la salida por eso.
+        for cola in colas:
+            cola.cancel_join_thread()
         manager.shutdown()
         print("Salida limpia.")
 

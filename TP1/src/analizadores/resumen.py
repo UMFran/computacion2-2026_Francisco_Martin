@@ -1,8 +1,8 @@
 """Analizador Resumen: PID/PPID/usuario/estado/threads/CPU%/comando.
 
-CPU% se calcula por delta entre dos llamadas a recolectar(), que están
-separadas por el intervalo del analizador. Por eso el recolector guarda estado
-(jiffies previos + timestamp) en un closure que vive lo que vive el proceso.
+CPU% se calcula por delta entre dos llamadas a recolectar(pids), que están
+separadas por el intervalo del analizador. Por eso guardamos el estado (jiffies
+previos + timestamp) en un closure que vive lo que vive el proceso.
 """
 import time
 
@@ -13,13 +13,13 @@ def crear_recolector(verbose):
     prev = {}          # {pid: jiffies_cpu}
     prev_t = [None]    # lista de 1 elem para poder reasignar dentro del closure
 
-    def recolectar():
+    def recolectar(pids):
         ahora = time.time()
         dt = (ahora - prev_t[0]) if prev_t[0] else None
         nuevos = {}
         procesos = []
 
-        for pid in procfs.listar_pids():
+        for pid in pids:
             try:
                 st = procfs.leer_stat(pid)
                 status = procfs.leer_status(pid)

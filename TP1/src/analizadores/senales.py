@@ -16,9 +16,9 @@ MASCARAS = {
 
 
 def crear_recolector(verbose):
-    def recolectar():
+    def recolectar(pids):
         procesos = []
-        for pid in procfs.listar_pids():
+        for pid in pids:
             try:
                 st = procfs.leer_stat(pid)
                 status = procfs.leer_status(pid)
