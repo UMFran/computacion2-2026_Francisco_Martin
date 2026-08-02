@@ -12,13 +12,13 @@ def crear_recolector(verbose):
     prev = {}          # {(pid, tid): jiffies}
     prev_t = [None]
 
-    def recolectar():
+    def recolectar(pids):
         ahora = time.time()
         dt = (ahora - prev_t[0]) if prev_t[0] else None
         nuevos = {}
         procesos = []
 
-        for pid in procfs.listar_pids():
+        for pid in pids:
             try:
                 st = procfs.leer_stat(pid)
                 hilos_raw = procfs.leer_threads(pid)

@@ -73,39 +73,44 @@ kill -TERM <PID>   # shutdown limpio (igual que SIGINT / Ctrl+C)
 ## 3. Arquitectura
 
 ```
-                    ┌──────────────────────────────────────────────┐
-                    │        SNAPSHOT GLOBAL  (Manager.dict)         │
-                    │   lo posee el proceso servidor del Manager     │
-                    │   "resumen":{datos,ts}  "memoria":{datos,ts}   │
-                    │   "fds" ... "threads" ... "senales" ...        │
-                    │   "scheduling" ...      "sistema":{datos,ts}   │
-                    └── ▲ ▲ ▲ ▲ ▲ ▲ ▲ ───────────────────┬──────────┘
-      escriben SU clave  │ │ │ │ │ │ │                    │ lee (polling)
-   (with lock solo p/dump)│ │ │ │ │ │                    │
-        ┌────────┬────────┼─┼─┼─┼─┼─┼────────┐           │
-   ┌────▼───┐┌───▼───┐┌───▼┐┌▼──┐┌▼───┐┌─────▼┐┌───────┐ │  ┌──────────────┐
-   │Resumen ││Memoria││FDs ││Thr││Señ ││Sched ││Sistema│ │  │  DISPLAY TUI │
-   │  2s    ││  3s   ││ 5s ││2s ││10s ││ 10s  ││  2s   │ │  │  (rich)      │
-   └───┬────┘└───┬───┘└─┬──┘└┬──┘└┬───┘└──┬───┘└───┬───┘ │  │  + thread de │
-       └─────────┴──────┴────┴────┴───────┴────────┘     │  │    teclado   │
-                    cada analizador lee /proc            │  └──────┬───────┘
-                    por su cuenta (Value = su intervalo)  │        │ +/- escribe
-                              │                            │        ▼ al Value
-                              ▼                    lee ─────┘   del intervalo
-                       /proc  (kernel)
-       ────────────────────────────────────────────────────────────────
-       Proceso principal = DISPLAY + MANEJADOR DE SEÑALES.
-       Señales INT/TERM/HUP/USR1/USR2 → el handler solo prende un flag;
-       el loop de la TUI lee el flag y ejecuta la acción real.
+        ┌───────────────┐   lista los PIDs de /proc cada 1s y
+        │  RECOLECTOR   │   los reparte a los analizadores por Queue
+        └───────┬───────┘
+                │  (una Queue por analizador)
+   ┌────────┬───┴────┬────────┬────────┬────────┬────────┐
+┌──▼─────┐┌─▼─────┐┌─▼──┐┌────▼┐┌──────▼┐┌───────▼┐┌───────▼┐
+│Resumen ││Memoria││FDs ││Thr  ││Señales││Sched   ││Sistema │  (7 analizadores)
+│  2s    ││  3s   ││ 5s ││ 2s  ││  10s  ││  10s   ││  2s    │  leen /proc (datos
+└──┬─────┘└─┬─────┘└─┬──┘└──┬──┘└───┬───┘└───┬────┘└───┬────┘  de su dimensión)
+   │ escriben SU clave (with lock solo para el dump)   │
+   └────────┴────────┴───┬────┴───────┴────────┴───────┘
+                         ▼
+        ┌──────────────────────────────────────────────┐
+        │        SNAPSHOT GLOBAL  (Manager.dict)         │
+        │   lo posee el proceso servidor del Manager     │
+        │   "resumen" "memoria" "fds" ... "sistema"      │
+        └───────────────────────┬────────────────────────┘
+                                 │ lee (polling)
+                                 ▼
+                    ┌──────────────────────────┐
+                    │        DISPLAY (TUI, rich) │
+                    │  + thread de teclado       │
+                    │  +/- escribe al Value      │
+                    │      del intervalo ────────┼──▶ (a cada analizador)
+                    └──────────────────────────┘
+
+   Proceso principal = DISPLAY + MANEJADOR DE SEÑALES.
+   Señales INT/TERM/HUP/USR1/USR2 → el handler solo prende un flag;
+   el loop de la TUI lee el flag y ejecuta la acción real.
 ```
 
 ### Componentes
 
 | Componente | Cómo lo resolví | Archivo |
 |------------|-----------------|---------|
-| **Recolección de PIDs** | Cada analizador llama `procfs.listar_pids()` y lee las carpetas de `/proc`. No hice un proceso "recolector" central que reparta trabajo (ver *Decisiones de diseño*). | [`procfs.py`](src/procfs.py) |
-| **7 analizadores** | Un proceso independiente por dimensión, todos corriendo un loop genérico común. | [`analizadores/`](src/analizadores/) |
-| **Agregador** | Lo cumple el **proceso servidor del `Manager`**: es el único que posee el dict y serializa todas las escrituras. No armé un proceso agregador aparte. | (Manager) |
+| **Recolector** | Un proceso dedicado lista los PIDs de `/proc` cada 1s y los reparte a los 7 analizadores por `Queue` (una por analizador). Los analizadores ya no descubren procesos por su cuenta. | [`recolector.py`](src/recolector.py) |
+| **7 analizadores** | Un proceso independiente por dimensión, todos corriendo un loop genérico común; leen `/proc` solo para los datos de su dimensión, sobre los PIDs que el recolector reparte. | [`analizadores/`](src/analizadores/) |
+| **Agregador** | Lo cumple el **proceso servidor del `Manager`**: es el único que posee el dict y serializa todas las escrituras. No armé un proceso agregador aparte porque el Manager ya cumple ese rol. | (Manager) |
 | **Display (TUI)** | Renderiza la vista activa leyendo el snapshot; lee el teclado en un thread. | [`display.py`](src/display.py) |
 | **Manejador de señales** | Handlers async-signal-safe que solo prenden flags. | [`senales.py`](src/senales.py) |
 
@@ -115,17 +120,18 @@ kill -TERM <PID>   # shutdown limpio (igual que SIGINT / Ctrl+C)
 
 | Comunicación | Mecanismo | Por qué lo elegí |
 |--------------|-----------|------------------|
+| Recolector → analizadores (lista de PIDs) | **`Queue`** (una por analizador) | Es un reparto de trabajo productor→consumidores: el recolector "empuja" la lista de PIDs a cada analizador. Es exactamente para lo que sirve una `Queue`. |
 | Analizadores → snapshot global | **`Manager().dict()`** | Es una estructura anidada, con muchos escritores (7) y un lector; el proxy del Manager serializa el acceso a través de su proceso servidor y soporta valores complejos (dicts, listas). |
 | Display → analizador (cambiar intervalo) | **`Value('d')`** por analizador | Es un escalar de alta frecuencia; `Value` es memoria compartida cruda (mmap), sin pasar por el servidor del Manager ni picklear nada. Un `Manager.dict` acá sería carísimo para un solo float. |
 | Toggle verbose (SIGUSR2) → analizadores | **`Value('i')`** compartido | Igual que arriba: un flag entero simple, de lectura frecuente. |
 | Coordinación de escritura para el dump | **`Lock`** | Ver *race conditions*. |
 
-**¿Por qué no usé `Queue`/`Pipe`?** El patrón de datos acá es *"cada productor mantiene el
-último valor de su clave y el consumidor lo mira cuando quiere"* (estado más reciente),
-no un flujo productor-consumidor donde cada mensaje importa. Para "último estado" un dict
-compartido me encaja mejor que una cola: no se acumulan mensajes viejos, el lector siempre
-ve el valor actual y no tengo que drenar nada. Habría elegido `Queue`/`Pipe` si necesitara,
-por ejemplo, un histórico de eventos sin perder ninguno.
+**¿Por qué `Queue` para el recolector pero `Manager.dict` para el snapshot?** Son dos patrones
+distintos. El recolector→analizadores es *productor-consumidor* (repartir una lista): la `Queue`
+encaja. El snapshot es *"último estado"*: cada analizador mantiene el último valor de su clave y
+el display lo mira cuando quiere. Para "último estado" un dict compartido es mejor que una cola:
+no se acumulan mensajes viejos y el lector siempre ve el valor actual. `Pipe` no lo usé porque la
+`Queue` ya me resuelve el reparto a varios consumidores (un pipe es punto a punto).
 
 ### 4.2 `Manager` vs `Value`/`Array`
 
@@ -189,20 +195,24 @@ decidí conscientemente y me alcanza para este loop (que ya despierta cada 0.1 s
 self-pipe real me haría falta si el loop estuviera bloqueado en `select()` esperando y
 tuviera que despertarlo con la señal.
 
-### 4.7 Recolector y Agregador como procesos separados: por qué no
+### 4.7 Recolector y Agregador
 
-La consigna los lista como componentes. Decidí **no** crear un proceso recolector central que
-reparta trabajo: cada analizador es autónomo y lee `/proc` para su dimensión. La ventaja es
-menos acoplamiento y un punto de falla menos (si un analizador muere, los demás siguen — lo
-verifiqué con `kill -9`). El costo es que cada analizador recorre `/proc` por su cuenta
-(lecturas redundantes), pero para la escala de este TP es despreciable. El **Agregador** sí
-existe, solo que no como código mío: es el **proceso servidor del `Manager`**, que es
-literalmente el que "mantiene el snapshot global en memoria compartida".
+- **Recolector**: es un proceso propio ([recolector.py](src/recolector.py)) que lista los PIDs
+  de `/proc` una vez por ciclo y los reparte a los 7 analizadores por `Queue`. Así centralizo el
+  descubrimiento de procesos (antes cada analizador listaba `/proc` por su cuenta, con lecturas
+  redundantes) y cumplo el rol de "distribuir trabajo a los analizadores" de la consigna.
+  - *Tradeoff que asumí*: el recolector es un **punto único de falla**. Lo resolví con
+    **degradación elegante**: si el recolector muere, los analizadores **no se caen** — reusan la
+    última lista de PIDs que recibieron y siguen actualizando datos (lo verifiqué con `kill -9`
+    al recolector: el monitor siguió vivo). Y si muere un analizador, los demás siguen igual.
+- **Agregador**: no es código mío, es el **proceso servidor del `Manager`**, que es literalmente
+  el que "mantiene el snapshot global en memoria compartida" y serializa las escrituras de los 7
+  analizadores.
 
 ## 5. Conceptos del curso aplicados
 
-- **Proceso vs thread**: mi arquitectura principal es **multiproceso** (7 analizadores +
-  display, cada uno con su espacio de memoria). El único **thread** que uso es el lector de
+- **Proceso vs thread**: mi arquitectura principal es **multiproceso** (recolector + 7
+  analizadores + display, cada uno con su espacio de memoria). El único **thread** que uso es el lector de
   teclado dentro del display ([display.py](src/display.py)): elegí un thread ahí porque pasa
   casi todo el tiempo **bloqueado en I/O** (`select`/`read` sobre stdin), donde el GIL se
   libera y no compite por CPU. Para el trabajo CPU-bound (leer y parsear `/proc`) uso
@@ -245,23 +255,24 @@ literalmente el que "mantiene el snapshot global en memoria compartida".
 - **CPU% puede superar 100%**: es por core; un proceso multihilo puede pasar de 100%
   (convención tipo `htop`), no es un error.
 - **No hice extensiones bonus** (histórico, detección de anomalías, árbol de procesos, etc.).
-- **Lecturas redundantes de `/proc`**: cada analizador recorre `/proc` por su cuenta (ver
-  4.7). No escala idealmente a miles de procesos, pero sí a las cargas de este TP.
+- **El recolector es un punto único de falla** (mitigado): el descubrimiento de PIDs está
+  centralizado en un solo proceso; si muere, los analizadores reusan la última lista y siguen
+  (degradación elegante, ver 4.7). Cada analizador igual lee `/proc` para los *datos* de su
+  dimensión, así que a miles de procesos no escala idealmente, pero sí a las cargas de este TP.
 
 ## 7. Cómo testear
 
 ```bash
 # 1. Correr con carga real y comparar contra ps dentro del contenedor
 docker compose run --rm monitor sh
-#   (dentro)
+#   (dentro) generá procesos y compará lo que muestra el monitor contra ps:
 sleep 300 & yes > /dev/null &
-python src/dia1_lister.py     # listado simple para contrastar
-ps -eLf                        # comparar PID/PPID/estado/threads
+ps -eLf                        # PID/PPID/estado/threads del sistema
 
-# 2. Ver la arquitectura multiproceso "cruda" (datos de prueba)
-python src/dia2_lister.py      # y en otra terminal: kill -9 <pid de un analizador>
+# 2. Probar las señales del monitor (ver sección "Cómo correr")
 
-# 3. Probar las señales del monitor (ver sección "Cómo correr")
+# 3. Resiliencia: con el monitor corriendo, matá un analizador (o el recolector)
+#    con `kill -9 <pid>` desde otra terminal y verificá que el monitor sigue vivo.
 ```
 
 ## 8. Estructura del repositorio
@@ -274,7 +285,8 @@ TP1/
 ├── requirements.txt       ← rich
 ├── config.json            ← intervalos por vista (recargable con SIGHUP)
 └── src/
-    ├── main.py            ← orquestador: analizadores + señales + TUI
+    ├── main.py            ← orquestador: recolector + analizadores + señales + TUI
+    ├── recolector.py      ← proceso que lista PIDs y los reparte por Queue
     ├── procfs.py          ← todos los parsers de /proc
     ├── display.py         ← TUI (rich) + lectura de teclado en thread
     ├── senales.py         ← handlers de señales del monitor
@@ -282,9 +294,9 @@ TP1/
     │   ├── base.py        ← loop genérico de analizador
     │   ├── resumen.py  memoria.py  fds.py  threads.py
     │   └── senales.py  scheduling.py  sistema.py
-    └── dia1_lister.py .. dia4_lister.py
-                           ← snapshots de progreso por día (no son parte del
-                             monitor final; los dejo como registro del desarrollo)
+    └── progreso/          ← dia1_lister.py .. dia4_lister.py: snapshots por día
+                             para ver el avance del desarrollo. NO son parte del
+                             monitor (el monitor funciona sin esta carpeta).
 ```
 
 ## 9. Decisiones sobre la TUI
