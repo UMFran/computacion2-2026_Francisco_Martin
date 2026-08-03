@@ -24,20 +24,21 @@ en una interfaz de texto que se navega por teclado.
 
 Requisito: Docker + Docker Compose. Todo corre dentro de un contenedor Linux.
 
+**Para usar la TUI (recomendado):**
+
 ```bash
-docker compose up --build
+docker compose run --rm --build monitor
 ```
 
-> **Importante para interactuar con el teclado (navegación, filtros, cambio de vista):**
-> `docker compose up` muestra la TUI pero **no reenvía las teclas** al contenedor.
-> Para usar la interfaz de forma interactiva, corré:
->
-> ```bash
-> docker compose run --rm monitor
-> ```
->
-> Esto adjunta el teclado (stdin + TTY) al contenedor. Con `up` la vista se ve y se
-> actualiza sola, pero las teclas solo responden con `run`.
+Este es el comando correcto para una interfaz de terminal: conecta una terminal
+**del tamaño convencional**, así las columnas se ven completas, no parpadea y **el teclado
+funciona** (cambiar de vista, navegar, filtrar, etc.). La primera vez también buildea.
+
+> **¿Por qué no `docker compose up`?** `up` está pensado para servicios/logs, no para
+> apps interactivas: le da al contenedor una terminal chica por defecto (~80 columnas) que
+> no se sincroniza con la tuya, así que las columnas quedan apretadas e ilegibles, la pantalla
+> parpadea y las teclas no responden. Sirve para *buildear* (`docker compose up --build`) o
+> para ver el dashboard de reojo, pero para **usar** la TUI andá con `run`.
 
 Para salir: `q` (o `Ctrl+C`).
 
@@ -57,18 +58,21 @@ Para salir: `q` (o `Ctrl+C`).
 
 ### Señales que responde el monitor
 
-Como el contenedor usa `pid: "host"`, el monitor **no** es PID 1: muestra su propio
-**PID** en el header de la TUI (`pid=...`). Usá ese número (no lo mandes a un analizador
-hijo, que no tiene los handlers). Desde otra terminal:
+La forma más simple: mandarle la señal **por nombre de servicio**, sin averiguar ningún
+PID. Parado en la carpeta del TP1, con el monitor corriendo en segundo plano:
 
 ```bash
-docker compose exec monitor sh
-# PID = el que muestra el header de la TUI, ej. 12345
-kill -USR1 <PID>   # dump del snapshot a dump_<timestamp>.json
-kill -USR2 <PID>   # toggle modo verbose
-kill -HUP  <PID>   # releer config.json (intervalos) en caliente
-kill -TERM <PID>   # shutdown limpio (igual que SIGINT / Ctrl+C)
+docker compose up -d --build             # arranca el monitor en segundo plano
+docker compose kill -s SIGUSR1 monitor   # dump del snapshot a dump_<timestamp>.json
+docker compose kill -s SIGUSR2 monitor   # toggle modo verbose
+docker compose kill -s SIGHUP  monitor   # releer config.json (intervalos)
+docker compose kill -s SIGTERM monitor   # shutdown limpio (igual que SIGINT / Ctrl+C)
+docker compose down                       # apagar todo
 ```
+
+`docker compose kill -s` **no mata**: manda la señal que le indiques al proceso del
+monitor. (Si querés *ver la TUI reaccionar* en vivo, corré la TUI con
+`docker compose run --rm monitor` en una terminal y mandá las señales desde otra.)
 
 ## 3. Arquitectura
 
@@ -308,6 +312,40 @@ la puse en un thread con la terminal en modo `cbreak` (deja `Ctrl+C` funcionando
 
 ## 10. Lo que aprendí
 
-*(A completar en primera persona: 2-3 párrafos sobre lo que descubrí haciendo el TP — por
-ejemplo la diferencia real entre `Manager` y `Value`, por qué un handler no puede hacer
-trabajo pesado, o qué sentí al ver un zombie aparecer en mi propio monitor.)*
+La idea que me ordenó todo el trabajo fue una que al principio no dimensionaba: **los procesos
+no comparten memoria**. Empecé con un script de un solo proceso que leía `/proc`, y pasar a una
+arquitectura multiproceso me obligó a entender que, para que siete procesos publicaran datos y
+otro los leyera, hacían falta mecanismos de comunicación específicos. Ahí terminé de entender por
+qué existen `Manager`, `Value` o `Queue` y cuándo conviene cada uno: no es lo mismo compartir una
+estructura grande que crece (el snapshot, con `Manager` y su proceso servidor) que un solo número
+que se lee todo el tiempo (el intervalo, con `Value` en memoria compartida). Esa distinción —qué
+se guarda y, sobre todo, cómo viaja el dato: un mensaje serializado al servidor, o memoria
+compartida por `mmap`— la tuve que precisar durante el desarrollo; era algo que usaba sin tener
+del todo claro el mecanismo por debajo.
+
+Lo segundo que me llevo es que **el código puede parecer correcto y esconder un problema serio**.
+Un `contador += 1` se ve inofensivo hasta que entendés que son tres pasos (leer, sumar, escribir)
+y que el scheduler puede cortar en el medio: ahí aparece la race condition. Con las señales me
+pasó algo parecido: al principio mezclaba por qué el handler tiene que ser mínimo, y lo reafirmé
+cuando entendí que la razón es la reentrancia —un handler te interrumpe en cualquier instrucción
+y, si hace trabajo pesado que toma un recurso ya ocupado, te traba—. Entender el *porqué*, y no
+solo la receta, es lo que me terminó de dar seguridad para defender cada decisión.
+
+Por último, buena parte del TP fue **ver la teoría funcionando en `/proc`**. Algunos conceptos ya
+los tenía claros de entrada —qué es un zombie, los estados de proceso, por qué matar un proceso no
+arrastra a los demás—; otros los afiancé recién al verlos con datos reales: por qué un proceso
+CPU-bound acumula context switches involuntarios, la diferencia entre un page fault minor y uno
+major, o por qué el lector de teclado puede ser un thread (está bloqueado en I/O y suelta el GIL)
+mientras los analizadores tienen que ser procesos. Conectar cada parte del código con eso es lo
+que le dio sentido al TP completo.
+
+**Trabajar con IA.** Una parte importante del aprendizaje fue *cómo* usé la IA. La consigna
+proponía usarla como tutor y no como generador de código, y eso cambió mi forma de trabajar: en
+vez de pegar lo que me tiraba, me acostumbré a preguntar el porqué de cada decisión y a defenderla
+con mis palabras. Varias veces eso sirvió para corregir cosas —por ejemplo, cuando confundí `mmap`
+con "DMA", o cuando mezclé por qué un handler de señales tiene que ser mínimo—: entenderlo mal, que
+me lo marcaran y reformularlo yo mismo me dejó el concepto más firme que si lo hubiera copiado bien
+de una. También aprendí a no dar todo por sentado: revisar contra la consigna, verificar que lo que
+"andaba" realmente cumpliera, y frenar cuando algo no me cerraba en lugar de avanzar. Me quedo con
+que la IA es una herramienta potente para aprender, siempre que uno mantenga el control de entender
+lo que hace su propio código.
