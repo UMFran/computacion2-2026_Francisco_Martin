@@ -349,3 +349,14 @@ de una. También aprendí a no dar todo por sentado: revisar contra la consigna,
 "andaba" realmente cumpliera, y frenar cuando algo no me cerraba en lugar de avanzar. Me quedo con
 que la IA es una herramienta potente para aprender, siempre que uno mantenga el control de entender
 lo que hace su propio código.
+
+**Verlo en vivo — un zombie en mi propio monitor.** Aprendí a interrogar al sistema en marcha:
+desde una **segunda terminal** le mandé señales al monitor (`docker compose kill -s ...`) y maté
+procesos con `kill -9`, mirando el efecto en la propia TUI. Al matar uno de los analizadores
+(PID 1564), lo vi quedar en **estado `Z` (zombie)** en la lista de procesos del propio monitor.
+Coincide con la teoría: el proceso principal, mientras corre la TUI, **no llama a `wait()` sobre
+sus hijos** (los recoge recién en el shutdown), así que un hijo muerto queda como zombie hasta que
+el padre lo recoge. Fue la forma más directa de conectar la teoría con el código: el concepto que
+estudié en abstracto, generado por mi propio programa y mostrado por mi propio monitor.
+
+![Proceso 1564 (python src/main.py) en estado Z tras un kill -9, visto desde el propio monitor](capturas/zombie.jpeg)
