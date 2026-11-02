@@ -1,0 +1,1007 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Conceptos del TP2</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 10.5pt; line-height: 1.5;
+    color: #000; background: #fff;
+    max-width: 185mm; margin: 0 auto; padding: 10mm 6mm 20mm;
+  }
+  h1 { font-size: 20pt; margin: 0 0 2mm; border-bottom: 2.5pt solid #000; padding-bottom: 3mm; }
+  h1 + .sub { font-size: 9.5pt; font-style: italic; margin: 0 0 8mm; }
+  h2 {
+    font-size: 13.5pt; margin: 11mm 0 4mm; padding: 2mm 0 1.5mm;
+    border-top: 1.5pt solid #000; border-bottom: 0.5pt solid #000;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11pt; margin: 7mm 0 2mm;
+    page-break-after: avoid;
+  }
+  h3 .n { font-family: "Courier New", monospace; font-size: 9.5pt; margin-right: 2mm; }
+  p { margin: 0 0 2.5mm; text-align: justify; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1.2mm; }
+  code {
+    font-family: "Courier New", monospace; font-size: 9.5pt;
+    background: #f0f0f0; padding: 0 0.7mm; border: 0.3pt solid #ccc;
+  }
+  pre {
+    font-family: "Courier New", monospace; font-size: 8.8pt; line-height: 1.35;
+    background: #f6f6f6; border: 0.5pt solid #999; border-left: 2.5pt solid #000;
+    padding: 2.5mm 3mm; margin: 2.5mm 0 3.5mm; overflow-x: auto;
+    page-break-inside: avoid; white-space: pre-wrap;
+  }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 2.5mm 0 4mm; font-size: 9.3pt; page-break-inside: avoid; }
+  th, td { border: 0.5pt solid #000; padding: 1.5mm 2mm; text-align: left; vertical-align: top; }
+  th { background: #e4e4e4; font-weight: bold; }
+  .meta {
+    font-size: 9pt; margin: 0 0 3mm; padding: 1.5mm 2.5mm;
+    border: 0.5pt solid #000; background: #f0f0f0;
+  }
+  .meta b { font-variant: small-caps; letter-spacing: 0.3pt; }
+  .q {
+    margin: 3mm 0 4mm; padding: 2mm 3mm;
+    border: 0.8pt dashed #000; background: #fafafa; font-size: 9.6pt;
+  }
+  .q b { font-variant: small-caps; letter-spacing: 0.4pt; }
+  .block-intro { font-size: 10pt; font-style: italic; margin-bottom: 5mm; padding-left: 3mm; border-left: 2pt solid #999; }
+  .toc { font-size: 9.6pt; border: 0.8pt solid #000; padding: 3mm 4mm; margin-bottom: 8mm; }
+  .toc h2 { border: none; margin: 0 0 2mm; font-size: 11pt; padding: 0; }
+  .toc ol { margin: 0; padding-left: 5mm; }
+  .toc > ol > li { margin-bottom: 1.5mm; font-weight: bold; }
+  .toc ol ol { font-weight: normal; padding-left: 4mm; margin-top: 0.8mm; }
+  .toc ol ol li { margin-bottom: 0.3mm; }
+  hr { border: none; border-top: 0.5pt solid #999; margin: 5mm 0; }
+  .nb { border: 1pt solid #000; padding: 2.5mm 3mm; margin: 3mm 0; background: #f0f0f0; font-size: 9.8pt; }
+  .nb b { font-variant: small-caps; }
+  @media print {
+    body { padding: 0; max-width: none; font-size: 10pt; }
+    h2 { page-break-before: auto; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Conceptos del TP2 — Plataforma de Tareas Distribuidas</h1>
+<p class="sub">Computación II — UM — 2026 · Material de estudio y de defensa oral · Cada concepto indica
+en qué clase leerlo y dónde aparece en el código del TP.</p>
+
+<div class="nb">
+<b>Cómo usar este documento.</b> No es un resumen para leer de corrido. Es un índice
+razonado: cuando en el código aparece un concepto, se viene acá, se lee la ficha, y si
+hace falta se va a la clase que indica. La última línea de cada ficha —<b>la pregunta</b>—
+es el formato en que eso aparece en la corrección oral.
+</div>
+
+<div class="toc">
+<h2>Contenido</h2>
+<ol>
+  <li>Por qué asyncio: del multiplexing a las corrutinas
+    <ol>
+      <li>I/O-bound vs CPU-bound</li>
+      <li>Bloqueante vs no bloqueante</li>
+      <li>I/O multiplexing: la base del event loop</li>
+      <li>Generadores: <code>yield</code> y <code>send()</code></li>
+      <li>Corrutinas: <code>async</code>/<code>await</code></li>
+      <li>El event loop</li>
+      <li><code>asyncio.sleep</code> vs <code>time.sleep</code></li>
+    </ol>
+  </li>
+  <li>Concurrencia de tareas
+    <ol start="8">
+      <li>Corrutina vs Task: <code>create_task()</code></li>
+      <li><code>gather</code> vs un <code>for</code> con <code>await</code></li>
+      <li><code>Semaphore</code>: acotar la concurrencia</li>
+      <li><code>asyncio.Queue</code> vs <code>queue.Queue</code></li>
+      <li><code>maxsize</code>: control de flujo</li>
+      <li><code>task_done()</code> y <code>join()</code></li>
+      <li>Productor-consumidor sin <code>Lock</code></li>
+    </ol>
+  </li>
+  <li>Cancelación y tiempo
+    <ol start="15">
+      <li><code>cancel()</code> y <code>CancelledError</code></li>
+      <li>Timeouts: <code>asyncio.timeout</code></li>
+      <li>Limpieza: <code>finally</code> y <code>shield</code></li>
+      <li>Apagado ordenado y señales</li>
+    </ol>
+  </li>
+  <li>Lo que asyncio no resuelve
+    <ol start="19">
+      <li>El GIL</li>
+      <li>Executors: <code>run_in_executor</code> y <code>to_thread</code></li>
+      <li>Threads vs procesos: la tabla</li>
+      <li><code>fork</code> vs <code>spawn</code> y el pickle</li>
+      <li>El bug silencioso: excepciones que nadie mira</li>
+    </ol>
+  </li>
+  <li>La capa HTTP
+    <ol start="24">
+      <li>HTTP, métodos y códigos de estado</li>
+      <li>Keep-alive y el cliente único</li>
+      <li>FastAPI, Pydantic y <code>def</code> vs <code>async def</code></li>
+      <li><code>lifespan</code> y <code>app.state</code></li>
+    </ol>
+  </li>
+  <li>Las tres mediciones, explicadas</li>
+</ol>
+</div>
+
+<!-- ==================================================================== -->
+<h2>1. Por qué asyncio: del multiplexing a las corrutinas</h2>
+
+<p class="block-intro">Este bloque responde la pregunta de fondo del TP: por qué un servidor
+de un solo hilo puede atender cientos de clientes a la vez, y por qué eso no es magia sino
+una llamada al sistema (<code>epoll</code>) envuelta en azúcar sintáctica (<code>await</code>).</p>
+
+<h3><span class="n">1.1</span> I/O-bound vs CPU-bound</h3>
+<div class="meta"><b>Clase:</b> 17 (el problema), 21 (la solución) · <b>En el TP:</b> es la razón de que existan los tres tipos de tarea</div>
+
+<p>Una tarea es <b>I/O-bound</b> cuando pasa la mayor parte de su tiempo <i>esperando</i> a algo
+externo: que llegue un paquete de red, que el disco devuelva un bloque, que el otro extremo
+del socket escriba. Durante esa espera el proceso no usa CPU: está dormido, bloqueado en una
+llamada al sistema. Una tarea es <b>CPU-bound</b> cuando pasa su tiempo <i>calculando</i>:
+cada instante que vive está ejecutando bytecode y consumiendo un núcleo.</p>
+
+<p>La distinción importa porque determina qué herramienta sirve. Si N tareas están esperando,
+se las puede superponer: mientras una espera, otra avanza, y el total tiende al tiempo de la
+más lenta en vez de la suma. Eso es lo que hace asyncio, y es gratis porque la espera no
+consumía nada. Pero si N tareas están calculando, superponerlas no ahorra nada: el trabajo
+total de CPU es el mismo, y con un solo núcleo el tiempo es la suma, pase lo que pase.
+Asyncio no crea núcleos.</p>
+
+<p>El TP fuerza esta distinción con tres tareas elegidas a propósito:</p>
+<table>
+<tr><th>Tarea</th><th>Naturaleza</th><th>Qué demuestra</th></tr>
+<tr><td><code>descargar</code></td><td>I/O-bound</td><td>Que la concurrencia asíncrona es real y medible (medición 1)</td></tr>
+<tr><td><code>hashear</code></td><td>CPU-bound</td><td>Que asyncio <b>no</b> sirve para esto, y que una corrutina que calcula congela todo (medición 2)</td></tr>
+<tr><td><code>esperar</code></td><td>I/O simulado</td><td>Espera sin red: sirve para probar cancelación y timeouts de forma determinista</td></tr>
+</table>
+
+<p>Cómo distinguirlas en la práctica, sin teoría: correr la tarea y mirar el uso de CPU.
+Si un núcleo está al 100%, es CPU-bound. Si la CPU está en el piso y el programa igual tarda,
+es I/O-bound. El otro test: ¿si tuviera una red infinitamente rápida, tardaría lo mismo?
+Si la respuesta es sí, es CPU-bound.</p>
+
+<div class="q"><b>La pregunta:</b> "¿Por qué <code>hashear</code> no se puede resolver con asyncio
+si <code>descargar</code> sí?" — Porque <code>descargar</code> tiene puntos de espera donde
+ceder el control y <code>hashear</code> no tiene ninguno: no hay nada que esperar, hay que calcular.</div>
+
+<h3><span class="n">1.2</span> Bloqueante vs no bloqueante</h3>
+<div class="meta"><b>Clase:</b> 17 ("Escribir sin bloquear") · <b>En el TP:</b> la restricción "nada de <code>time.sleep()</code>" y "sin <code>requests</code>"</div>
+
+<p>Una operación es <b>bloqueante</b> cuando, si no puede completarse ya, duerme al hilo que la
+llamó hasta que pueda. <code>socket.recv()</code> en un socket sin datos bloquea: el kernel saca
+al proceso de la cola de ejecución y no lo vuelve a poner hasta que llegan bytes. Es <b>no
+bloqueante</b> cuando en vez de dormir devuelve inmediatamente un "todavía no hay nada"
+(en POSIX, <code>EWOULDBLOCK</code>).</p>
+
+<p>El punto que se malinterpreta: <b>no bloqueante no significa más rápido</b>. Una descarga
+tarda lo que tarda la red en ambos modos. Lo que cambia es quién espera. En modo bloqueante
+espera el hilo entero, y mientras espera no puede hacer nada más. En modo no bloqueante el
+hilo vuelve enseguida y puede ocuparse de otro cliente; la espera la administra otro
+mecanismo (el multiplexor). La ganancia no está en la operación individual: está en todo lo
+demás que se puede hacer durante la espera.</p>
+
+<p>De acá salen dos restricciones de la consigna, que no son capricho:</p>
+<ul>
+  <li><b>Nada de <code>time.sleep()</code> en una corrutina.</b> <code>time.sleep()</code> es
+  bloqueante: duerme el hilo. Y el hilo es <i>uno solo</i>, el que corre el event loop. Dormirlo
+  es congelar todo el servidor.</li>
+  <li><b>Sin <code>requests</code> para las descargas.</b> <code>requests</code> es sincrónico:
+  su <code>get()</code> bloquea hasta que llega la respuesta. Usarlo dentro de una corrutina
+  tiene el mismo efecto que <code>time.sleep()</code>, pero peor, porque dura lo que dure la red.</li>
+</ul>
+
+<h3><span class="n">1.3</span> I/O multiplexing: la base del event loop</h3>
+<div class="meta"><b>Clase:</b> 17 completa · <b>En el TP:</b> no se escribe, pero es lo que corre abajo de cada <code>await</code></div>
+
+<p>El problema original: un servidor con 1000 clientes conectados. Con un hilo por cliente se
+pagan 1000 pilas y 1000 cambios de contexto. Con un solo hilo que lea de un socket a la vez,
+un cliente lento frena a todos. La solución es preguntarle al kernel: "de estos 1000
+descriptores, decime cuáles tienen algo listo". Eso es multiplexar I/O.</p>
+
+<table>
+<tr><th>Mecanismo</th><th>Cómo funciona</th><th>Límite</th></tr>
+<tr><td><code>select()</code></td><td>Se le pasan tres conjuntos de descriptores; devuelve los listos</td><td><code>FD_SETSIZE</code> (1024) y recorre todos: O(n) en cada llamada</td></tr>
+<tr><td><code>poll()</code></td><td>Array de estructuras en vez de bitmaps</td><td>Saca el límite de 1024, pero sigue siendo O(n)</td></tr>
+<tr><td><code>epoll()</code></td><td>El kernel mantiene la lista registrada y avisa solo de los que cambiaron</td><td>O(1) amortizado; solo Linux</td></tr>
+<tr><td><code>selectors</code></td><td>Módulo de Python: elige el mejor disponible en la plataforma</td><td>Es la forma correcta de usarlo desde Python</td></tr>
+</table>
+
+<p>Dos sutilezas de la clase 17 que vale tener presentes: <b>el socket que escucha también se
+vigila</b> (que esté "listo para leer" significa que hay una conexión esperando en
+<code>accept()</code>), y <b>"listo" no significa "hay muchos datos"</b>: puede haber un solo
+byte, así que el framing sigue siendo problema del programa.</p>
+
+<p>Por qué esto está en un documento sobre asyncio: porque <b>el event loop es exactamente
+esto</b>. Adentro de <code>asyncio</code> hay un <code>selectors.DefaultSelector</code>. Cada
+vez que una corrutina hace <code>await</code> sobre una operación de red, lo que pasa abajo es
+que el descriptor se registra en el selector y la corrutina se suspende. El loop llama al
+selector, el kernel le dice qué está listo, y el loop despierta a las corrutinas
+correspondientes. <code>async</code>/<code>await</code> es una interfaz cómoda sobre
+<code>epoll</code>.</p>
+
+<div class="q"><b>La pregunta:</b> "¿Qué hace tu programa mientras ninguna tarea tiene nada que
+hacer?" — Está bloqueado en el selector (<code>epoll_wait</code>), que es una espera del kernel
+sin consumo de CPU. No es un bucle que pregunta todo el tiempo.</div>
+
+<h3><span class="n">1.4</span> Generadores: <code>yield</code> y <code>send()</code></h3>
+<div class="meta"><b>Clase:</b> 18 (primera mitad) · <b>En el TP:</b> no aparece directo, pero es el mecanismo de <code>await</code></div>
+
+<p>Un generador es una función que se <b>suspende y recuerda</b>. Al llegar a un
+<code>yield</code> devuelve un valor y congela su estado completo —variables locales, posición
+del contador de programa, pila— para retomar exactamente ahí cuando se le pida el próximo
+valor. Es la pieza que faltaba para hacer concurrencia sin hilos: si una función puede
+pausarse voluntariamente y volver, un planificador puede alternar entre varias.</p>
+
+<p><code>send()</code> cierra el círculo: permite <i>mandarle</i> un valor al generador, que
+aparece como resultado de la expresión <code>yield</code>. Con eso el generador deja de ser
+solo una fuente de valores y pasa a ser un interlocutor: cede el control informando qué
+espera, y recibe la respuesta cuando se la dan.</p>
+
+<p>La clase 18 construye con esto un <b>scheduler cooperativo en veinte líneas</b>: una lista
+de generadores y un bucle que los va avanzando de a uno con <code>send()</code>. Es un event
+loop de juguete, y es el mismo mecanismo que asyncio. "Cooperativo" es la palabra clave:
+nadie interrumpe a nadie. Cada tarea cede el control cuando quiere, y si no cede, nadie más
+corre. Esa es la raíz de toda la medición 2 del TP.</p>
+
+<h3><span class="n">1.5</span> Corrutinas: <code>async</code>/<code>await</code></h3>
+<div class="meta"><b>Clase:</b> 18 ("async y await: la misma idea con nombre propio") · <b>En el TP:</b> todas las funciones del sistema</div>
+
+<p><code>async def</code> declara una corrutina. <code>await</code> marca un punto de suspensión:
+"acá puedo ceder el control; despertame cuando esto esté". Son los mismos generadores con otro
+nombre y una sintaxis que no obliga a encadenar <code>yield from</code> en cada nivel. La clase
+18 lo demuestra con un test directo: los objetos corrutina comparten la maquinaria de los
+generadores.</p>
+
+<p>El gotcha que la clase titula <b>"crear no es ejecutar"</b>:</p>
+
+<pre><code>async def saludar():
+    print('hola')
+
+c = saludar()        # NO imprime nada: devuelve un objeto corrutina
+await saludar()      # ahora sí corre
+</code></pre>
+
+<p>Llamar a una corrutina no la ejecuta: construye un objeto que describe el trabajo pendiente.
+Si nadie lo <code>await</code>ea ni lo convierte en Task, el trabajo no sucede y Python avisa con
+un <code>RuntimeWarning: coroutine was never awaited</code>. Es un bug frecuente y silencioso:
+en el TP, olvidarse un <code>await</code> en el worker significa que la tarea se marca como
+completada sin haberse ejecutado nunca.</p>
+
+<p>La regla práctica: <code>await</code> solo se puede usar dentro de <code>async def</code>, y
+una corrutina solo avanza si alguien la está esperando o si se la programó como Task.</p>
+
+<h3><span class="n">1.6</span> El event loop</h3>
+<div class="meta"><b>Clase:</b> 18 · <b>En el TP:</b> el que corre uvicorn; nuestros workers son Tasks suyas</div>
+
+<p>El event loop es el planificador: mantiene una lista de tareas listas para avanzar y un
+registro de las que están esperando algo. Su ciclo es sacar una tarea lista, ejecutarla hasta
+su próximo <code>await</code>, anotar qué espera, y pasar a la siguiente. Cuando no queda
+ninguna lista, se bloquea en el selector hasta que el kernel reporte algo.</p>
+
+<p>Tres propiedades que hay que tener claras:</p>
+<ul>
+  <li><b>Es un solo hilo.</b> Nunca hay dos corrutinas ejecutando código al mismo tiempo. De
+  acá sale que no hacen falta locks (ficha 2.7) y también que una corrutina que calcula
+  bloquea todo (ficha 4.1).</li>
+  <li><b>Es cooperativo, no preventivo.</b> El loop no puede interrumpir a una corrutina en el
+  medio. Solo recupera el control cuando la corrutina llega a un <code>await</code>. Una
+  corrutina sin <code>await</code>s es un monopolio.</li>
+  <li><b>No se anida.</b> <code>asyncio.run()</code> crea un loop, corre la corrutina y cierra
+  el loop. Llamarlo adentro de un loop que ya corre da <code>RuntimeError</code>
+  (ejercicio 4 de la clase 18).</li>
+</ul>
+
+<p>En el TP el loop no lo creamos nosotros: lo crea <code>uvicorn</code>. Nuestros workers son
+Tasks que arrancamos en el <code>lifespan</code> y que viven en ese loop, al lado de las
+corrutinas que atienden los pedidos HTTP. Por eso un worker que bloquea el loop deja de
+responder la API: comparten el hilo.</p>
+
+<h3><span class="n">1.7</span> <code>asyncio.sleep</code> vs <code>time.sleep</code></h3>
+<div class="meta"><b>Clase:</b> 18 ("asyncio.sleep contra time.sleep") · <b>En el TP:</b> la tarea <code>esperar</code>, y una restricción explícita de la consigna</div>
+
+<p>Es la demostración más corta de todo el bloque, y una de las seis preguntas de la corrección.</p>
+
+<pre><code>time.sleep(5)          # duerme EL HILO: el loop no corre nada durante 5s
+await asyncio.sleep(5) # suspende ESTA corrutina: el loop sigue con las demás
+</code></pre>
+
+<p><code>time.sleep()</code> es una llamada al sistema que saca al hilo de la cola de ejecución.
+El event loop vive en ese hilo. Durante esos 5 segundos: no se atiende ningún pedido HTTP,
+no se despierta ningún timeout, ningún otro worker avanza, el servidor está muerto.</p>
+
+<p><code>asyncio.sleep()</code> es una corrutina: registra un temporizador en el loop y se
+suspende. El loop anota "despertar a esta en 5 segundos" y se va a atender a los demás. El
+tiempo total de la corrutina es el mismo, pero el costo para el sistema es cero.</p>
+
+<p>En el TP la tarea <code>esperar</code> usa <code>asyncio.sleep</code>, y por eso se puede
+cancelar: la cancelación se entrega en un <code>await</code>, y <code>asyncio.sleep</code> es
+un <code>await</code>. Una tarea hecha con <code>time.sleep()</code> sería <b>incancelable</b>
+hasta que termine de dormir. El bug no es solo de rendimiento: rompe un requisito funcional.</p>
+
+<div class="q"><b>La pregunta (textual de la consigna):</b> "¿Por qué <code>time.sleep()</code> en
+una corrutina es un bug y <code>asyncio.sleep()</code> no?"</div>
+
+<!-- ==================================================================== -->
+<h2>2. Concurrencia de tareas</h2>
+
+<p class="block-intro">Con el event loop entendido, este bloque es el cómo: cómo se lanzan
+varias cosas a la vez, cómo se reparte trabajo entre workers, y por qué el patrón
+productor-consumidor de la clase 11 se simplifica tanto cuando los consumidores son corrutinas.</p>
+
+<h3><span class="n">2.1</span> Corrutina vs Task: <code>create_task()</code></h3>
+<div class="meta"><b>Clase:</b> 18, 21 · <b>En el TP:</b> los workers, y el Task de cada tarea en ejecución (para poder cancelarla)</div>
+
+<p>Una corrutina es trabajo descrito. Un <b>Task</b> es trabajo <i>programado</i>:
+<code>asyncio.create_task(corrutina())</code> la entrega al loop, que la va a ir avanzando por
+su cuenta, sin que nadie la espere. Devuelve un objeto Task que es el asa para manejarla
+después: preguntarle si terminó, pedirle el resultado, o <code>cancel()</code>arla.</p>
+
+<p>Dos usos distintos en el TP, y conviene no confundirlos:</p>
+<ul>
+  <li><b>Los workers.</b> Se crean con <code>create_task()</code> en el <code>lifespan</code> y
+  nadie los espera: viven mientras viva la aplicación, consumiendo de la cola. Son bucles
+  infinitos. Guardamos sus Tasks para poder cancelarlos en el apagado.</li>
+  <li><b>La ejecución de cada tarea.</b> Para que <code>DELETE /tareas/{id}</code> pueda cancelar
+  una tarea <i>en ejecución</i>, el worker tiene que envolver la ejecución en un Task y dejar
+  ese Task registrado donde el endpoint pueda encontrarlo. Si el worker simplemente hiciera
+  <code>await ejecutar(tarea)</code>, el único Task cancelable sería el worker entero, y
+  cancelarlo mataría al worker, no a la tarea.</li>
+</ul>
+
+<p>El gotcha: si nadie guarda la referencia a un Task, el recolector de basura puede
+destruirlo a mitad de camino. Siempre se guarda en una lista o un dict.</p>
+
+<h3><span class="n">2.2</span> <code>gather</code> vs un <code>for</code> con <code>await</code></h3>
+<div class="meta"><b>Clase:</b> 18 (ejercicio 4.3), 20 · <b>En el TP:</b> la tarea <code>descargar</code> y la medición 1</div>
+
+<p>Otra de las seis preguntas de la corrección, y la diferencia es de orden de magnitud:</p>
+
+<pre><code># Secuencial: arranca una, ESPERA que termine, arranca la siguiente.
+for url in urls:
+    await bajar(url)          # total = la SUMA de todas
+
+# Concurrente: las lanza todas, después espera a que estén todas.
+await asyncio.gather(*(bajar(u) for u in urls))   # total = la MÁS LENTA
+</code></pre>
+
+<p>El <code>for</code> con <code>await</code> adentro <b>no es concurrente</b>. Es el bug clásico
+de quien escribió el <code>async</code> pero no entendió el modelo: la sintaxis es asíncrona y
+el comportamiento es secuencial. <code>await</code> significa "esperá esto": en un bucle,
+espera una por una.</p>
+
+<p><code>gather</code> convierte cada corrutina en Task (las programa todas en el loop) y
+después espera al conjunto. Mientras la primera espera su respuesta de red, las otras ya
+mandaron la suya. El tiempo total tiende al de la más lenta.</p>
+
+<p>Dos detalles de <code>gather</code> que la clase 18 hace probar:</p>
+<ul>
+  <li><b>Devuelve en el orden en que se pasaron</b>, no en el que terminaron. Los resultados se
+  pueden emparejar por posición con las entradas sin problema.</li>
+  <li><b><code>return_exceptions=True</code></b> hace que una excepción en una corrutina
+  aparezca como un valor en la lista de resultados en vez de propagarse y cancelar el resto.
+  En el TP sirve en dos lugares: en <code>descargar</code>, para que una URL caída no tire
+  abajo las otras 19; y en el apagado, al esperar a los workers cancelados.</li>
+</ul>
+
+<div class="q"><b>La pregunta (textual):</b> "¿Qué diferencia hay entre <code>asyncio.gather</code>
+y un <code>for</code> con <code>await</code> adentro?" — Y la medición 1 es la respuesta con números.</div>
+
+<h3><span class="n">2.3</span> <code>Semaphore</code>: acotar la concurrencia</h3>
+<div class="meta"><b>Clase:</b> 11 (versión threads), 20 y 21 (versión async) · <b>En el TP:</b> limitar descargas simultáneas en <code>descargar</code></div>
+
+<p>Un semáforo es un contador de permisos: <code>Semaphore(4)</code> deja pasar a cuatro, y el
+quinto espera a que alguno devuelva el suyo. Es el mismo primitivo de la clase 11, pero en
+versión async hay una diferencia de sintaxis que importa: se usa <code>async with</code>, no
+<code>with</code>, porque adquirir el permiso puede implicar esperar, y esperar en asyncio es
+un <code>await</code>.</p>
+
+<pre><code>sem = asyncio.Semaphore(4)
+
+async def acotada(url):
+    async with sem:              # async with, no with
+        return await bajar(url)
+
+await asyncio.gather(*(acotada(u) for u in urls))
+</code></pre>
+
+<p>Por qué hace falta si <code>gather</code> ya resuelve la concurrencia: porque
+<code>gather</code> con 10.000 URLs abre 10.000 conexiones de golpe. Eso agota descriptores de
+archivo (el límite del proceso), satura la red, y probablemente haga que el servidor remoto
+nos corte. El semáforo es el intermedio: concurrencia real, pero acotada. La clase 20 lo mide:
+secuencial = la suma, <code>gather</code> = la más lenta, con semáforo = en el medio.</p>
+
+<div class="q"><b>La pregunta (textual):</b> "Si te mando 10.000 tareas de golpe, ¿qué se rompe
+primero?" — La respuesta involucra el <code>maxsize</code> de la cola, los descriptores de
+archivo, y la memoria del registro de tareas.</div>
+
+<h3><span class="n">2.4</span> <code>asyncio.Queue</code> vs <code>queue.Queue</code></h3>
+<div class="meta"><b>Clase:</b> 21 ("asyncio.Queue: repartir trabajo") · <b>En el TP:</b> el corazón del sistema, y una pregunta obligatoria del README</div>
+
+<p>Las dos son colas FIFO seguras para concurrencia, y la diferencia es exactamente la del
+bloque 1: <b>cómo esperan</b>.</p>
+
+<table>
+<tr><th></th><th><code>queue.Queue</code></th><th><code>asyncio.Queue</code></th></tr>
+<tr><td>Hecha para</td><td>Threads</td><td>Corrutinas</td></tr>
+<tr><td><code>get()</code> con la cola vacía</td><td><b>Bloquea el hilo</b></td><td><code>await</code>: suspende la corrutina</td></tr>
+<tr><td>Si se usa en una corrutina</td><td>Congela el event loop entero</td><td>Correcto</td></tr>
+<tr><td>Thread-safe</td><td>Sí (tiene locks adentro)</td><td>No, y no le hace falta</td></tr>
+</table>
+
+<p>Un <code>queue.Queue().get()</code> dentro de un worker-corrutina bloquearía el único hilo
+que hay. Con la cola vacía —el estado normal de un sistema que espera pedidos— el servidor
+quedaría congelado: no se atendería ningún HTTP, no se dispararía ningún timeout. El sistema
+estaría muerto justamente cuando no tiene trabajo.</p>
+
+<p><code>asyncio.Queue.get()</code> es una corrutina: si la cola está vacía, la suspende y
+registra que espera un item. El loop se va a atender los pedidos HTTP. Cuando el
+<code>POST</code> hace <code>put()</code>, el loop despierta a uno de los workers que estaban
+esperando. No hay locks adentro porque no los necesita (ficha 2.7).</p>
+
+<div class="q"><b>La pregunta (obligatoria en el README):</b> "¿Por qué <code>asyncio.Queue</code>
+y no <code>queue.Queue</code>?"</div>
+
+<h3><span class="n">2.5</span> <code>maxsize</code>: control de flujo</h3>
+<div class="meta"><b>Clase:</b> 21 ("maxsize es control de flujo") · <b>En el TP:</b> qué contesta el <code>POST</code> cuando el sistema está saturado</div>
+
+<p><code>asyncio.Queue(maxsize=100)</code> no es una optimización: es la política de qué pasa
+cuando entra trabajo más rápido de lo que sale. Con la cola llena, <code>await put()</code>
+<b>espera</b>. Eso se llama <i>backpressure</i>: la presión vuelve hacia atrás, al productor.</p>
+
+<p>Sin <code>maxsize</code> (cola infinita) el productor nunca se frena y la cola crece hasta
+consumir la memoria. El sistema no falla rápido y claro: se degrada lento y muere raro. La
+clase 21 lo mide con un productor rápido y un consumidor lento.</p>
+
+<p>En el TP esto es una decisión de diseño con consecuencia visible en la API, porque la
+consigna exige que el <code>POST</code> responda <i>inmediatamente</i>. Si la cola está llena
+hay tres opciones, y hay que elegir y justificar:</p>
+<ol>
+  <li><code>await put()</code> → el POST se queda esperando. <b>Viola el requisito</b> de
+  responder inmediatamente.</li>
+  <li><code>put_nowait()</code> y si lanza <code>QueueFull</code>, responder
+  <code>503 Service Unavailable</code>. Rechaza, pero responde al instante y es honesto con el
+  cliente. <b>Es la opción correcta para este TP.</b></li>
+  <li>Cola infinita → no hay problema hasta que se acaba la memoria.</li>
+</ol>
+
+<h3><span class="n">2.6</span> <code>task_done()</code> y <code>join()</code></h3>
+<div class="meta"><b>Clase:</b> 21 ("task_done y join") · <b>En el TP:</b> el apagado ordenado: esperar a las tareas en curso</div>
+
+<p>La cola lleva una cuenta de items pendientes. <code>put()</code> la incrementa;
+<code>task_done()</code> la decrementa. <code>await join()</code> espera a que llegue a cero,
+o sea a que todo lo encolado esté <i>procesado</i> (no solo retirado).</p>
+
+<p>El gotcha, que está en el comentario de <code>cola.py</code> de la clase 21: si falta un
+<code>task_done()</code>, la cuenta nunca llega a cero y <code>join()</code> espera
+<b>para siempre</b>. Y si la tarea falla, el <code>task_done()</code> se saltea. Por eso el
+patrón canónico lo pone en un <code>finally</code>:</p>
+
+<pre><code>while True:
+    tarea = await cola.get()
+    try:
+        await procesar(tarea)
+    finally:
+        cola.task_done()      # SIEMPRE, o join() espera para siempre
+</code></pre>
+
+<p>En el TP <code>join()</code> es la pieza del apagado ordenado: cuando llega
+<code>SIGTERM</code>, se deja de aceptar tareas nuevas y se hace
+<code>await asyncio.wait_for(cola.join(), timeout=N)</code> — esperar a que lo que está en
+curso termine, pero con límite, porque la consigna dice "esperar (con límite)".</p>
+
+<h3><span class="n">2.7</span> Productor-consumidor sin <code>Lock</code></h3>
+<div class="meta"><b>Clase:</b> 11 (con threads), 20 ("Por qué no hacen falta locks, y cuándo sí") · <b>En el TP:</b> el pool de workers y el registro compartido de tareas</div>
+
+<p>Es la ficha que más conviene tener firme: una de las seis preguntas, y el ejemplo que la
+propia consigna usa para ilustrar qué espera de la sección "conceptos aplicados" del README.</p>
+
+<p>En la clase 11, varios threads escribiendo una estructura compartida necesitan un
+<code>Lock</code> porque el sistema operativo puede interrumpir a un thread <b>en cualquier
+instrucción de bytecode</b>, incluso en el medio de un <code>contador += 1</code> (que son
+varias instrucciones: leer, sumar, guardar). Dos threads interrumpidos en el peor momento
+pierden un incremento. Esa es la race condition.</p>
+
+<p>Con corrutinas en un solo hilo, eso no puede pasar: <b>el event loop solo puede cambiar de
+corrutina en un <code>await</code></b>. Entre dos <code>await</code>s, el código corre
+atómicamente respecto de las otras corrutinas. Nadie se mete en el medio porque no hay medio:
+el punto de cambio es explícito y está escrito en el código.</p>
+
+<pre><code># Esto es atómico frente a las otras corrutinas: no hay await en el medio.
+tarea['estado'] = 'ejecutando'
+tarea['inicio'] = time.time()
+estadisticas['ejecutando'] += 1
+</code></pre>
+
+<p><b>Y cuándo sí hace falta</b> (la clase 20 lo aclara, y es el matiz que distingue entender de
+repetir): cuando una secuencia que debe ser consistente tiene un <code>await</code> en el
+medio. Ahí el loop puede meter otra corrutina que vea el estado a mitad de camino, o
+modificarlo. El patrón peligroso es leer-modificar-escribir con una espera adentro:</p>
+
+<pre><code># PELIGROSO: hay un await entre leer y escribir.
+n = registro['contador']
+await algo()                  # acá puede correr otra corrutina y tocar 'contador'
+registro['contador'] = n + 1  # se escribe sobre un valor viejo
+</code></pre>
+
+<p>La regla para el TP: las mutaciones del registro de tareas se hacen en bloques sin
+<code>await</code> adentro. Si hiciera falta una sección crítica con espera, existe
+<code>asyncio.Lock</code> (clase 21) — pero en este diseño no hace falta, y eso es lo que hay
+que poder argumentar.</p>
+
+<div class="q"><b>La pregunta (textual):</b> "¿Por qué tu pool de workers no necesita un
+<code>Lock</code>?" — No alcanza con "porque es un solo hilo": hay que decir <i>que el punto de
+cambio es el <code>await</code></i>, y saber mostrar el caso en que sí haría falta.</div>
+
+<!-- ==================================================================== -->
+<h2>3. Cancelación y tiempo</h2>
+
+<p class="block-intro">El 30% de la nota está en el ítem "Asincronismo: concurrencia real, event
+loop nunca bloqueado, <b>cancelación limpia</b>". Este bloque es la parte más preguntable del TP,
+porque es donde se ve si se entendió que la concurrencia cooperativa tiene costos.</p>
+
+<h3><span class="n">3.1</span> <code>cancel()</code> y <code>CancelledError</code></h3>
+<div class="meta"><b>Clase:</b> 20 ("Cancelación") · <b>En el TP:</b> <code>DELETE /tareas/{id}</code></div>
+
+<p>El mecanismo es más simple de lo que parece, y entenderlo exactamente responde media
+corrección. <code>tarea.cancel()</code> <b>no mata</b> nada. Lo que hace es pedirle al loop
+que, la próxima vez que esa corrutina esté en un <code>await</code>, en vez de darle el
+resultado le <b>lance</b> <code>asyncio.CancelledError</code> desde ese punto.</p>
+
+<p>Consecuencias directas:</p>
+<ul>
+  <li><b>La cancelación se entrega en un <code>await</code>.</b> Una corrutina sin
+  <code>await</code>s por delante (un cálculo CPU-bound, por ejemplo) <b>no se puede cancelar</b>:
+  el pedido queda anotado y se entrega cuando llegue a un <code>await</code>, que puede ser
+  nunca. Esto tiene una consecuencia concreta en el TP: una tarea <code>hashear</code> que ya
+  arrancó en el executor no es realmente interrumpible, y eso hay que declararlo en
+  "limitaciones conocidas".</li>
+  <li><b>Es una excepción normal.</b> Viaja por la pila, ejecuta los <code>finally</code>, se
+  puede capturar.</li>
+  <li><b>Hay que relanzarla.</b> Capturarla para limpiar está bien; tragarla está mal, porque el
+  resto del sistema queda creyendo que la tarea sigue viva.</li>
+</ul>
+
+<pre><code>async def larga():
+    try:
+        await asyncio.sleep(10)
+    except asyncio.CancelledError:
+        print('me cancelaron en mi await')
+        raise                      # SIEMPRE relanzarla
+    finally:
+        print('finally: limpieza hecha')
+</code></pre>
+
+<p>En el TP, <code>DELETE</code> tiene que distinguir dos situaciones:</p>
+<ul>
+  <li><b>Tarea <code>pendiente</code></b> (todavía en la cola): no hay Task que cancelar. Se la
+  marca <code>cancelada</code> en el registro, y cuando un worker la saque, la descarta sin
+  ejecutarla.</li>
+  <li><b>Tarea <code>ejecutando</code></b>: se busca su Task en el registro y se le hace
+  <code>cancel()</code>. El worker ve el <code>CancelledError</code>, corre su
+  <code>finally</code> (que incluye el <code>task_done()</code>) y sigue con la siguiente.
+  Clave: hay que cancelar el Task <i>de la tarea</i>, no el del worker.</li>
+</ul>
+
+<div class="q"><b>La pregunta (textual):</b> "¿Qué pasa si cancelo una tarea justo cuando está a
+mitad de una descarga?"</div>
+
+<h3><span class="n">3.2</span> Timeouts: <code>asyncio.timeout</code></h3>
+<div class="meta"><b>Clase:</b> 20 ("Timeout") · <b>En el TP:</b> timeout configurable por tarea → estado <code>fallida</code> con motivo</div>
+
+<pre><code>try:
+    async with asyncio.timeout(5):
+        resultado = await ejecutar(tarea)
+except TimeoutError:
+    tarea['estado'] = 'fallida'
+    tarea['motivo'] = 'timeout de 5s'
+</code></pre>
+
+<p>Lo importante: <b>un timeout es una cancelación con reloj</b>. Al vencer, el gestor cancela
+la corrutina de adentro —con el mismo mecanismo de la ficha anterior— y convierte el
+<code>CancelledError</code> resultante en <code>TimeoutError</code> para quien espera afuera.
+No es un mecanismo aparte: es cancelación automática. Por eso todo lo de la ficha 3.1 aplica
+igual, incluido que una tarea CPU-bound sin <code>await</code>s no se entera del timeout.</p>
+
+<p>Dos formas equivalentes:</p>
+<ul>
+  <li><code>async with asyncio.timeout(n)</code> — context manager, Python 3.11+. Más legible
+  cuando se protege un bloque. Es la que usa la clase 20.</li>
+  <li><code>await asyncio.wait_for(corrutina, timeout=n)</code> — función, existe desde antes.
+  Más cómoda cuando se protege una sola llamada. En el TP la usamos en el apagado:
+  <code>wait_for(cola.join(), timeout=N)</code>.</li>
+</ul>
+
+<h3><span class="n">3.3</span> Limpieza: <code>finally</code> y <code>shield</code></h3>
+<div class="meta"><b>Clase:</b> 20, 21 · <b>En el TP:</b> "la cancelación tiene que ser limpia: sin corrutinas huérfanas ni recursos sin liberar"</div>
+
+<p>La consigna pide cancelación <i>limpia</i>, y el README tiene que responder "¿qué pasa con
+los recursos a medio usar?". Los recursos en juego en este TP:</p>
+<ul>
+  <li><b>La conexión HTTP a medio leer</b> en <code>descargar</code>. Si el cliente se creó con
+  <code>async with httpx.AsyncClient()</code>, el <code>CancelledError</code> propaga por el
+  <code>__aexit__</code> del context manager y la conexión se cierra sola. Esa es la razón de
+  usar el context manager y no crear el cliente a mano: la limpieza ante cancelación sale
+  gratis.</li>
+  <li><b>El <code>task_done()</code> de la cola.</b> Si se saltea, el <code>join()</code> del
+  apagado se cuelga para siempre. Va en <code>finally</code>.</li>
+  <li><b>El estado de la tarea en el registro.</b> Hay que marcarla <code>cancelada</code> y
+  descontarla de los contadores; si no, <code>/estadisticas</code> reporta para siempre un
+  worker ocupado que no existe.</li>
+  <li><b>Las descargas hermanas.</b> Si <code>descargar</code> lanzó 20 con
+  <code>gather</code> y se cancela la tarea, <code>gather</code> propaga la cancelación a las
+  20. Eso es lo que se quiere; lo que no se quiere es que queden corriendo sin que nadie
+  espere su resultado: esas son las <b>corrutinas huérfanas</b> que menciona la consigna.</li>
+</ul>
+
+<p><code>asyncio.shield()</code> es la salida de emergencia: protege una corrutina de la
+cancelación de quien la espera. Sirve para operaciones que no se pueden dejar a medias (un
+commit, un volcado a disco). En el TP el candidato es el volcado del estado durante el
+apagado. Hay que usarlo con cuidado: lo que se protege, también deja de responder al apagado.</p>
+
+<h3><span class="n">3.4</span> Apagado ordenado y señales</h3>
+<div class="meta"><b>Clase:</b> 20 ("Apagado ordenado"), 21 (centinela vs cancelación) · <b>En el TP:</b> requisito 4, "persistencia mínima"</div>
+
+<p>Una <b>señal</b> es una notificación asincrónica del kernel a un proceso.
+<code>SIGINT</code> es el Ctrl+C; <code>SIGTERM</code> es el "terminá ordenadamente" que manda
+<code>docker stop</code> (y a los 10 segundos, si el proceso no se fue, manda
+<code>SIGKILL</code>, que no se puede atrapar). Atrapar <code>SIGTERM</code> es lo que
+distingue un apagado ordenado de una muerte abrupta.</p>
+
+<p>El protocolo que pide la consigna, en orden:</p>
+<ol>
+  <li>Dejar de aceptar tareas nuevas (el <code>POST</code> empieza a responder 503)</li>
+  <li>Esperar a las que están en curso, <b>con límite</b> (<code>wait_for(cola.join(), ...)</code>)</li>
+  <li>Volcar el estado a <code>estado_&lt;timestamp&gt;.json</code></li>
+  <li>Al arrancar, si existe un volcado previo, reportarlo por log</li>
+</ol>
+
+<p><b>Dos formas de apagar los workers</b>, las dos en <code>cola.py</code> de la clase 21:</p>
+<table>
+<tr><th></th><th>Cancelación</th><th>Centinela</th></tr>
+<tr><td>Cómo</td><td><code>w.cancel()</code> + <code>gather(..., return_exceptions=True)</code></td><td>Poner un objeto marcador por worker; cada uno lo ve y hace <code>return</code></td></tr>
+<tr><td>Efecto</td><td>Corta lo que esté haciendo (en su próximo <code>await</code>)</td><td>Termina lo que está haciendo y después sale</td></tr>
+<tr><td>Cuándo</td><td>Apagado inmediato, o después de que venció el límite de espera</td><td>Apagado ordenado: ninguna tarea queda a medias</td></tr>
+</table>
+<p>El comentario del archivo de la clase es explícito: el centinela "es lo que el TP2 pide para
+SIGTERM". El diseño razonable combina las dos: centinela primero, y cancelación como plan B
+cuando se agota el tiempo.</p>
+
+<div class="nb">
+<b>Windows.</b> <code>loop.add_signal_handler()</code> es solo Unix (lo dice la consigna en 4.1):
+funciona en Linux y macOS, no en Windows. Como el TP corre en Docker —o sea Linux—, la
+solución es probar el apagado ordenado dentro del contenedor. Para el desarrollo local en
+Windows, la alternativa es <code>signal.signal()</code> con un flag que el loop consulte.
+<br><br>
+<b>Async-signal-safe</b> (concepto del TP1): un handler de señal corre interrumpiendo lo que
+sea, en cualquier punto, así que solo puede hacer cosas muy simples. Por eso el handler no
+hace el apagado: solo prende un flag o encola un evento, y el trabajo real lo hace el loop
+cuando le toca. <code>add_signal_handler</code> hace justamente eso por nosotros: programa una
+callback en el loop en vez de ejecutarla dentro del contexto de la señal.
+</div>
+
+<!-- ==================================================================== -->
+<h2>4. Lo que asyncio no resuelve</h2>
+
+<p class="block-intro">La consigna lo dice sin vueltas: con N grande, <code>hashear</code>
+bloquea, "y ese es el punto". Este bloque es el de la medición 2 y el que más se parece a una
+pregunta de final.</p>
+
+<h3><span class="n">4.1</span> El GIL</h3>
+<div class="meta"><b>Clase:</b> 10 · <b>En el TP:</b> la razón de elegir procesos y no threads para <code>hashear</code></div>
+
+<p>El <b>GIL</b> (Global Interpreter Lock) es un lock del intérprete de CPython: solo un thread
+puede ejecutar bytecode de Python a la vez. Varios threads en un proceso Python no corren
+código Python en paralelo: se turnan.</p>
+
+<p>Para I/O no molesta, porque el GIL se <b>suelta</b> durante las llamadas al sistema
+bloqueantes: un thread que espera la red no lo tiene agarrado. Por eso los threads sirven para
+I/O bloqueante. Para CPU sí molesta: cuatro threads calculando hashes tardan lo mismo que uno
+—o un poco más, por el costo de turnarse—. <code>executor.py</code> de la clase 21 lo mide con
+4 tareas y reporta la diferencia contra procesos.</p>
+
+<p>Los <b>procesos</b> esquivan el GIL porque cada uno tiene su propio intérprete y su propio
+GIL. Ahí sí hay paralelismo de verdad, limitado por los núcleos de la máquina.</p>
+
+<p>Y el punto más importante para este TP, que es anterior al GIL: una corrutina CPU-bound no
+compite por el GIL con nadie, porque <b>no hay nadie más</b>. El event loop es un solo hilo. Una
+corrutina que calcula 5 segundos sin un solo <code>await</code> congela el sistema entero por 5
+segundos. No es un problema de contención: es que nunca cede el control.</p>
+
+<h3><span class="n">4.2</span> Executors: <code>run_in_executor</code> y <code>to_thread</code></h3>
+<div class="meta"><b>Clase:</b> 21 ("Sacar el trabajo pesado del loop") · <b>En el TP:</b> requisito explícito, y pregunta obligatoria del README</div>
+
+<p>La solución es sacar el cálculo del hilo del loop y mandarlo a otro lado, dejando en el loop
+solo un <code>await</code> que espera el resultado. Desde la corrutina se ve igual que
+cualquier espera; el loop queda libre.</p>
+
+<pre><code># A otro thread (atajo cómodo):
+resultado = await asyncio.to_thread(hashear, texto, n)
+
+# A otro proceso (hay que crear el pool):
+loop = asyncio.get_running_loop()
+resultado = await loop.run_in_executor(pool, hashear, texto, n)
+</code></pre>
+
+<p>Lo que pasa adentro: el loop entrega la función al executor, que la corre en otro
+thread/proceso, y le devuelve al loop un <i>future</i>. La corrutina espera ese future, o sea
+se suspende, o sea el loop puede atender a todos los demás. El cálculo tarda lo mismo, pero no
+congela a nadie — y eso es exactamente lo que mide la medición 2.</p>
+
+<p>Dos detalles prácticos:</p>
+<ul>
+  <li><code>run_in_executor</code> solo pasa <b>argumentos posicionales</b>. Para keyword
+  arguments hay que envolver en <code>functools.partial</code>.</li>
+  <li>El pool se crea <b>una vez</b> (en el <code>lifespan</code>), no por tarea. Crear un
+  <code>ProcessPoolExecutor</code> cuesta arrancar procesos: hacerlo por tarea anula la ganancia
+  (clase 22, "Crear el pool una vez").</li>
+</ul>
+
+<div class="q"><b>La pregunta (obligatoria en el README):</b> "¿Cómo evitás que una tarea
+CPU-bound congele la API?" — Y en la corrección: "Mostrame dónde tu código podría bloquear el
+event loop."</div>
+
+<h3><span class="n">4.3</span> Threads vs procesos: la tabla</h3>
+<div class="meta"><b>Clase:</b> 22 ("Threads o procesos: la tabla definitiva") · <b>En el TP:</b> la decisión a justificar para <code>hashear</code></div>
+
+<table>
+<tr><th></th><th><code>ThreadPoolExecutor</code></th><th><code>ProcessPoolExecutor</code></th></tr>
+<tr><td>Para qué</td><td>I/O bloqueante</td><td>CPU-bound</td></tr>
+<tr><td>GIL</td><td>Lo comparten: no paralelizan CPU</td><td>Uno por proceso: paralelismo real</td></tr>
+<tr><td>Memoria</td><td>Compartida</td><td>Separada</td></tr>
+<tr><td>Costo de arranque</td><td>Bajo</td><td>Alto (arrancar un intérprete)</td></tr>
+<tr><td>Pasaje de datos</td><td>Directo (misma memoria)</td><td>Por pickle: serializar, mandar, deserializar</td></tr>
+<tr><td>Excepciones</td><td>Se propagan por el future</td><td>Igual, pero tienen que ser picklables</td></tr>
+</table>
+
+<p>Para <code>hashear</code> la respuesta de manual es <code>ProcessPoolExecutor</code>, y hay
+que poder defenderla con la medición: con <b>una</b> tarea CPU-bound threads y procesos empatan
+(el único thread tiene el GIL para él solo, así que el cálculo va a velocidad plena, y el loop
+igual queda libre). La diferencia aparece con <b>varias</b> simultáneas: ahí los threads se
+turnan y los procesos corren en paralelo. <code>executor.py --paralelo</code> de la clase 21 es
+exactamente esa medición.</p>
+
+<p>Matiz honesto que conviene decir antes de que lo pregunten: en este TP los procesos tienen
+un costo que threads no tiene —el pickle del texto de entrada y del hash de salida, y la
+imposibilidad de cancelar una vez arrancado—. Si el texto fuera enorme, el pickle podría
+comerse la ganancia. La decisión es defendible en los dos sentidos <i>si se justifica con
+números</i>; lo que no es defendible es no haber pensado el tradeoff.</p>
+
+<h3><span class="n">4.4</span> <code>fork</code> vs <code>spawn</code> y el pickle</h3>
+<div class="meta"><b>Clase:</b> 8 (multiprocessing), 22 · <b>En el TP:</b> nota 4.1 de la consigna, y la guarda <code>__main__</code></div>
+
+<p>Cómo arranca un proceso hijo depende del sistema, y eso produce un bug que solo aparece en
+algunas plataformas:</p>
+<ul>
+  <li><b><code>fork</code></b> (Linux): el hijo es una copia del padre, con su memoria ya
+  armada (copy-on-write). No re-importa nada. Rápido.</li>
+  <li><b><code>spawn</code></b> (Windows y macOS): arranca un intérprete nuevo y
+  <b>re-importa el módulo</b> para reconstruir lo que haga falta. Más lento, y con una
+  consecuencia: si el módulo, al importarse, crea el pool, cada hijo crea otro pool al
+  re-importarse. Bucle infinito de procesos.</li>
+</ul>
+
+<p>De ahí la guarda que pide la consigna:</p>
+<pre><code>if __name__ == '__main__':
+    uvicorn.run(app, host='0.0.0.0', port=8000)
+</code></pre>
+<p>Con la guarda, el hijo re-importa el módulo pero no vuelve a arrancar el servidor, porque al
+importarse <code>__name__</code> no es <code>'__main__'</code>. Sin la guarda funciona en Linux
+y explota en Windows y macOS: el tipo de error que hay que conocer de antemano porque no
+aparece en la máquina en que se desarrolla.</p>
+
+<p><b>El pickle</b>: mandar trabajo a otro proceso implica serializar los argumentos y
+deserializarlos del otro lado. Consecuencias: la función tiene que ser importable a nivel de
+módulo (no una lambda ni una función anidada), los argumentos tienen que ser picklables, y
+hay un costo proporcional al tamaño de los datos.</p>
+
+<h3><span class="n">4.5</span> El bug silencioso: excepciones que nadie mira</h3>
+<div class="meta"><b>Clase:</b> 22 ("Excepciones: el capítulo que sorprende") · <b>En el TP:</b> pregunta obligatoria del README</div>
+
+<p>Una excepción dentro de un Task <b>no se propaga sola</b>. Queda guardada en el Task,
+esperando que alguien pida el resultado. Si nadie lo pide, no se ve nada: ni traceback, ni log.
+Solo, a veces, un <code>Task exception was never retrieved</code> cuando el recolector lo
+destruye.</p>
+
+<p>En el TP esto tiene una forma concreta y fatal: <b>si un worker lanza una excepción no
+capturada, el worker muere en silencio</b>. El sistema sigue andando, los <code>POST</code>
+siguen encolando, pero hay un consumidor menos. Con mala suerte mueren todos y la cola crece
+para siempre mientras la API responde 201 con total normalidad. Es el peor tipo de falla: sin
+síntoma visible hasta que es tarde.</p>
+
+<p>Las defensas, en orden de importancia:</p>
+<ol>
+  <li><b><code>try/except Exception</code> alrededor del cuerpo del worker</b>, dentro del
+  <code>while True</code>: la tarea se marca <code>fallida</code> con el motivo, se loguea, y el
+  worker sigue vivo para la siguiente. Una tarea que falla no puede matar al worker.</li>
+  <li><b>No capturar <code>CancelledError</code> con ese <code>except Exception</code></b>. En
+  Python 3.8+ <code>CancelledError</code> hereda de <code>BaseException</code>, no de
+  <code>Exception</code>, justamente para que un <code>except Exception</code> genérico no se la
+  tragué. Conviene saberlo y poder decirlo.</li>
+  <li><b>Un callback de error en el Task del worker</b>
+  (<code>task.add_done_callback(...)</code>) que loguee si el worker terminó por una excepción.
+  Red de seguridad para lo que se escape.</li>
+</ol>
+
+<div class="q"><b>La pregunta (obligatoria en el README):</b> "¿Qué pasa si un worker lanza una
+excepción no capturada?"</div>
+
+<!-- ==================================================================== -->
+<h2>5. La capa HTTP</h2>
+
+<p class="block-intro">Lo de arriba de todo: cómo entra el trabajo al sistema. Es la clase 19,
+y la parte menos preguntable del TP — pero hay dos cosas acá que sí se preguntan.</p>
+
+<h3><span class="n">5.1</span> HTTP, métodos y códigos de estado</h3>
+<div class="meta"><b>Clase:</b> 19 · <b>En el TP:</b> los cinco endpoints</div>
+
+<p>HTTP es texto sobre TCP: una línea de pedido (<code>GET /tareas HTTP/1.1</code>), headers,
+línea vacía, cuerpo. Los finales de línea son <code>\r\n</code> y eso importa si se escribe a
+mano. Por debajo sigue habiendo un socket (clase 13) y un servidor que acepta conexiones
+(clase 14): FastAPI es una capa de comodidad sobre eso, no otra cosa.</p>
+
+<p>Los códigos que usa este TP y por qué:</p>
+<table>
+<tr><th>Código</th><th>Cuándo</th></tr>
+<tr><td><code>201 Created</code></td><td><code>POST /tareas</code> encoló bien: se creó un recurso y se devuelve su <code>id</code></td></tr>
+<tr><td><code>200 OK</code></td><td><code>GET</code>s y el <code>DELETE</code> que cancela</td></tr>
+<tr><td><code>404 Not Found</code></td><td><code>id</code> que no existe</td></tr>
+<tr><td><code>409 Conflict</code></td><td><code>DELETE</code> de una tarea ya terminada: no se puede cancelar lo que ya pasó</td></tr>
+<tr><td><code>422 Unprocessable Entity</code></td><td>Lo pone Pydantic solo cuando el cuerpo no valida</td></tr>
+<tr><td><code>503 Service Unavailable</code></td><td>Cola llena, o apagado en curso: no se aceptan tareas nuevas</td></tr>
+</table>
+
+<h3><span class="n">5.2</span> Keep-alive y el cliente único</h3>
+<div class="meta"><b>Clase:</b> 19 ("Keep-alive"), 20 · <b>En el TP:</b> la tarea <code>descargar</code></div>
+
+<p>HTTP/1.1 mantiene la conexión TCP abierta entre pedidos. Importa porque abrir una conexión
+cuesta: el three-way handshake de TCP, y si es HTTPS también el handshake de TLS. Reusar la
+conexión se saltea todo eso.</p>
+
+<p>Por eso el cliente se crea <b>una vez</b> y se reutiliza:</p>
+<pre><code>async with httpx.AsyncClient(timeout=10) as cliente:
+    # el cliente mantiene un pool de conexiones: las reutiliza
+    await asyncio.gather(*(bajar(cliente, u) for u in urls))
+</code></pre>
+
+<p>Crear un <code>AsyncClient</code> por URL tira a la basura el pool de conexiones y suma el
+costo de handshake a cada descarga. Es un error que no da error: simplemente mide peor, y
+ensucia la medición 1.</p>
+
+<p><b>httpx o aiohttp</b> (hay que elegir y justificar): <code>aiohttp</code> es más veloz en
+benchmarks y está pensado solo para async. <code>httpx</code> tiene la misma API en modo
+sincrónico y asíncrono, lo que permite escribir la versión secuencial y la concurrente de la
+medición 1 con el mismo código cambiando una línea — y <b>ya está instalado</b> en el venv de
+la clase 19, porque es lo que usa el <code>TestClient</code> de FastAPI. Para este TP,
+<code>httpx</code> gana por el argumento de la medición.</p>
+
+<h3><span class="n">5.3</span> FastAPI, Pydantic y <code>def</code> vs <code>async def</code></h3>
+<div class="meta"><b>Clase:</b> 19 ("Dónde está el event loop", "async en FastAPI") · <b>En el TP:</b> todos los endpoints</div>
+
+<p><b>Pydantic</b> valida declarativamente: se escribe el tipo y FastAPI arma el objeto, valida,
+y si no cumple responde <code>422</code> con el detalle, sin una línea de código de validación.
+Como en <code>mi_api.py</code> de la clase 19:</p>
+
+<pre><code>class TareaNueva(BaseModel):
+    tipo: str = Field(min_length=1)
+    prioridad: int = Field(default=1, ge=1, le=5)
+</code></pre>
+
+<p>Y la trampa que la clase 19 marca, que es la que importa:</p>
+<ul>
+  <li><b><code>async def</code></b> → el endpoint corre <b>en el event loop</b>. Si adentro hay
+  algo bloqueante, congela el servidor entero.</li>
+  <li><b><code>def</code></b> (sincrónico) → FastAPI lo corre en un <b>threadpool</b>, justamente
+  para que, si bloquea, no bloquee el loop.</li>
+</ul>
+
+<p>O sea que un endpoint sincrónico es <i>más seguro</i> frente a código bloqueante, y uno
+<code>async</code> es más rápido pero exige que todo lo de adentro sea no bloqueante. En este
+TP los endpoints son <code>async def</code> porque tienen que tocar la
+<code>asyncio.Queue</code> y el registro, que viven en el loop. Y como no hacen nada
+bloqueante —el <code>POST</code> encola y vuelve— es la elección correcta.</p>
+
+<h3><span class="n">5.4</span> <code>lifespan</code> y <code>app.state</code></h3>
+<div class="meta"><b>Clase:</b> 21 ("Juntando todo: la arquitectura del TP2") · <b>En el TP:</b> dónde nacen y mueren la cola, el pool y los workers</div>
+
+<p>El <code>lifespan</code> es un context manager asíncrono que FastAPI corre al arrancar (antes
+del <code>yield</code>) y al apagar (después). Es el único lugar correcto para crear cosas que
+necesitan el event loop ya corriendo —una <code>asyncio.Queue</code>, un
+<code>create_task</code>— y para destruirlas ordenadamente.</p>
+
+<pre><code>@asynccontextmanager
+async def ciclo(app):
+    app.state.cola = asyncio.Queue(maxsize=100)
+    app.state.pool = ProcessPoolExecutor(max_workers=2)
+    app.state.workers = [
+        asyncio.create_task(worker(app.state.cola, app.state.pool))
+        for _ in range(4)
+    ]
+    yield                                  # ---- la app atiende pedidos ----
+    for w in app.state.workers:
+        w.cancel()
+    await asyncio.gather(*app.state.workers, return_exceptions=True)
+    app.state.pool.shutdown()
+
+app = FastAPI(lifespan=ciclo)
+</code></pre>
+
+<p>Este bloque es, literalmente, el esqueleto que da la clase 21. Por qué no se pueden crear
+esas cosas a nivel de módulo: la <code>asyncio.Queue</code> necesita un loop corriendo, y
+<code>create_task</code> también. A nivel de módulo todavía no hay loop. Y
+<code>app.state</code> es el lugar que FastAPI ofrece para colgar objetos que los endpoints
+necesitan, en vez de usar variables globales.</p>
+
+<!-- ==================================================================== -->
+<h2>6. Las tres mediciones, explicadas</h2>
+
+<p class="block-intro">Valen 15% de la nota y piden números propios con interpretación. Las tres
+tienen su base en un archivo de la cátedra, así que el trabajo es adaptar, correr e interpretar.</p>
+
+<h3><span class="n">6.1</span> Medición 1 — Concurrencia de I/O</h3>
+<div class="meta"><b>Pide:</b> 20 descargas secuenciales vs 20 concurrentes, y el speedup · <b>Base:</b> <code>clase20/descargas.py</code></div>
+<p><b>Qué se espera:</b> el tiempo secuencial es la suma de todas las demoras; el concurrente
+tiende a la demora de la más lenta. Con 20 URLs de ~0,5 s cada una: ~10 s contra ~1 s, speedup
+cercano a 10x.</p>
+<p><b>Cómo interpretarlo sin decir una tontería:</b> el speedup <b>no es 20x</b> aunque haya 20
+descargas. El techo no es la cantidad de tareas: es la relación entre la suma de las esperas y
+la espera más larga. Y hay costos que no desaparecen —resolución DNS, handshakes, el tiempo de
+CPU de parsear las respuestas— que son sumas reales y acotan el speedup. Lo que hay que poder
+decir es <i>por qué el número es el que es</i>, no solo que es grande.</p>
+
+<h3><span class="n">6.2</span> Medición 2 — El event loop bloqueado</h3>
+<div class="meta"><b>Pide:</b> cuánto tarda un <code>GET /tareas</code> durante un <code>hashear</code> pesado, sin executor y con executor · <b>Base:</b> <code>clase21/executor.py</code></div>
+<p><b>La técnica</b> está resuelta en <code>executor.py</code>: una corrutina "medidor" que
+debería despertarse cada 50 ms, y se mide cuánto se atrasa de verdad. Si el loop está
+bloqueado, el atraso es enorme y lo dice todo. En la versión del TP el medidor se puede
+reemplazar por <code>GET /tareas</code> real desde afuera, con <code>curl</code> o con un
+cliente <code>httpx</code>, que es más vistoso porque mide lo que ve el usuario.</p>
+<p><b>Qué se espera:</b> sin executor, el <code>GET</code> tarda lo que falte para que termine el
+cálculo —segundos—, porque la petición no se atiende hasta que la corrutina ceda. Con executor,
+milisegundos, como si no pasara nada. La consigna lo dice: "la diferencia es el punto de la
+materia".</p>
+<p><b>El detalle fino que conviene medir aparte:</b> el <code>hashear</code> tarda
+<i>prácticamente lo mismo</i> en los dos casos. El executor no acelera nada. Lo único que
+cambia es que el resto del sistema sigue vivo. Poder decir eso demuestra que se entendió que
+asyncio es sobre <i>aprovechamiento</i>, no sobre velocidad.</p>
+
+<h3><span class="n">6.3</span> Medición 3 — El techo del pool</h3>
+<div class="meta"><b>Pide:</b> subir las tareas concurrentes hasta que los tiempos se degraden, y explicar dónde está el límite y por qué</div>
+<p>Es la menos guiada y la más interesante, porque la respuesta depende del diseño propio. Los
+candidatos a ser el cuello de botella, y cómo distinguirlos:</p>
+<ul>
+  <li><b>La cantidad de workers.</b> Con W workers, como mucho W tareas en ejecución; el resto
+  espera en la cola. El tiempo de <i>cada tarea individual</i> no cambia, pero la latencia
+  extremo a extremo crece lineal con la cola. Se detecta porque crece el tiempo de espera y no
+  el de ejecución.</li>
+  <li><b>El <code>maxsize</code> de la cola.</b> Al llenarse, el <code>POST</code> empieza a
+  rechazar con 503. No es degradación: es rechazo, y es lo deseable.</li>
+  <li><b>Los descriptores de archivo.</b> Con muchas descargas concurrentes sin semáforo, se
+  agotan. Aparece como excepciones, no como lentitud.</li>
+  <li><b>El GIL / los núcleos, en el executor.</b> Con más tareas <code>hashear</code>
+  simultáneas que <code>max_workers</code> del pool, se hacen cola ahí. Y con más
+  <code>max_workers</code> que núcleos, los procesos compiten por CPU y todo se degrada.</li>
+  <li><b>La memoria del registro.</b> Cada tarea queda guardada para siempre en el dict, con su
+  resultado. 10.000 tareas <code>descargar</code> con sus respuestas es memoria que nunca se
+  libera: una limitación real del diseño que conviene declarar en el README.</li>
+</ul>
+<p>La medición buena no es solo la curva: es haber identificado <i>cuál</i> de estos cinco se
+rompió primero, y haberlo probado cambiando ese parámetro y viendo moverse el techo.</p>
+
+<hr>
+<p style="font-size:9pt;font-style:italic;text-align:center">
+TP2 — Computación II — UM — 2026 · Documento de estudio, no entregable ·
+Compañero de <code>PLAN.md</code> y <code>prompt_tutor_TP2.md</code>
+</p>
+
+</body>
+</html>
