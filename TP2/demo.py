@@ -50,6 +50,22 @@ def encolar(c, tipo, timeout=300, **parametros):
                                    'timeout': timeout}).json()['id']
 
 
+def esperar_libre(c, limite=120):
+    """Espera a que no quede nada en vuelo.
+
+    Varios pasos narran lo que pasa suponiendo que los dos workers estan
+    libres. Si se corre un subconjunto de pasos (`python demo.py 1 2 5`),
+    las tareas del paso anterior pueden estar todavia ocupando los workers
+    y el paso siguiente mostraria algo distinto de lo que narra.
+    """
+    t0 = time.perf_counter()
+    while time.perf_counter() - t0 < limite:
+        e = c.get('/estadisticas').json()
+        if e['workers']['ocupados'] == 0 and e['cola']['encoladas'] == 0:
+            return
+        time.sleep(0.5)
+
+
 def final(c, tid, limite=300):
     t0 = time.perf_counter()
     while time.perf_counter() - t0 < limite:
@@ -153,6 +169,7 @@ def paso4(c, ids=None):
 
 def paso5(c):
     titulo(5, 'Cancelacion: los dos caminos del DELETE')
+    esperar_libre(c)   # los dos caminos solo se distinguen con workers libres
     a = encolar(c, 'esperar', segundos=60)
     b = encolar(c, 'esperar', segundos=60)
     z = encolar(c, 'esperar', segundos=60)
@@ -199,6 +216,7 @@ def paso5(c):
 
 def paso6(c):
     titulo(6, 'El event loop bloqueado')
+    esperar_libre(c)   # la latencia del GET solo se lee limpia sin otra carga
     iteraciones = 12_000_000
     print(f'\n  Tarea: hashear {iteraciones:,} iteraciones de SHA-256')
     print()
