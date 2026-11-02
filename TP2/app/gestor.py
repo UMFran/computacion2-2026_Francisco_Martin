@@ -30,11 +30,14 @@ from . import tareas
 
 log = logging.getLogger('gestor')
 
-CANTIDAD_WORKERS = 2        # configurable: es el "pool de workers" de la consigna
-TAMANO_COLA = 100           # maxsize: control de flujo, no optimizacion
-MAX_PROCESOS = 2            # procesos para las tareas CPU-bound
-ESPERA_APAGADO = 10         # segundos como maximo esperando a las tareas en curso
-DIR_ESTADOS = 'estados'     # donde van los volcados estado_<timestamp>.json
+# Configurables por variable de entorno, para poder barrerlos en la
+# medicion 3 sin tocar el codigo. Los valores por omision son los que usa
+# el docker-compose.
+CANTIDAD_WORKERS = int(os.environ.get('TP2_WORKERS', 2))
+TAMANO_COLA = int(os.environ.get('TP2_COLA', 100))
+MAX_PROCESOS = int(os.environ.get('TP2_PROCESOS', 2))
+ESPERA_APAGADO = int(os.environ.get('TP2_ESPERA_APAGADO', 10))
+DIR_ESTADOS = os.environ.get('TP2_DIR_ESTADOS', 'estados')
 
 # Marca de "no hay mas trabajo". Es un object() y no un string para que no
 # pueda confundirse nunca con el id de una tarea (clase 21).

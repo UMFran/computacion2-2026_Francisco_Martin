@@ -6,9 +6,8 @@ Francisco Martín
 Un servicio HTTP al que se le encargan trabajos, que los ejecuta de forma concurrente
 con un pool de corrutinas, y que permite consultar su estado y su resultado.
 
-> **Estado de este informe:** documento en construcción. Las secciones marcadas con ⏳
-> corresponden a etapas todavía no implementadas y se completan antes de la entrega.
-> Ver [PLAN.md](PLAN.md) para el cronograma.
+> **Estado:** completo salvo la sección 7, que es personal. Todo lo que se describe acá
+> está implementado y probado; los números de la sección 4 son de corridas propias.
 
 ---
 
@@ -191,7 +190,12 @@ TP2/
 │   ├── tareas.py        161 líneas
 │   ├── gestor.py        361 líneas
 │   └── main.py          118 líneas
-├── mediciones/           ⏳ E5
+├── mediciones/
+│   ├── comun.py          levanta/baja los servidores de prueba
+│   ├── servidor_lento.py un servidor que tarda a proposito
+│   ├── medicion1_io.py
+│   ├── medicion2_bloqueo.py
+│   └── medicion3_techo.py
 ├── Dockerfile
 ├── docker-compose.yml
 ├── estados/              volcados del apagado (fuera de git)
@@ -200,7 +204,7 @@ TP2/
 ├── PLAN.md               plan de ejecución por etapas
 ├── conceptos_TP2.html    material de estudio: los conceptos y en qué clase leerlos
 ├── prompt_tutor_TP2.md   el prompt de tutor de la cátedra, adaptado a este TP
-└── dudas.md              ⏳
+└── dudas.md              dudas abiertas y resueltas
 ```
 
 #### `app/modelos.py` — qué entra y qué se guarda
@@ -482,6 +486,20 @@ FastAPI.
 `aiohttp` es algo más rápido en benchmarks y es nativo async; la decisión es defendible en
 los dos sentidos, pero el argumento de la medición pesó más.
 
+### ¿Cómo se configura el tamaño del pool?
+
+Por variables de entorno, con los valores por omisión en el código:
+
+| Variable | Por omisión | Qué controla |
+|---|---|---|
+| `TP2_WORKERS` | 2 | Corrutinas worker que consumen de la cola |
+| `TP2_PROCESOS` | 2 | Procesos del `ProcessPoolExecutor` |
+| `TP2_COLA` | 100 | `maxsize` de la `asyncio.Queue` |
+| `TP2_ESPERA_APAGADO` | 10 | Segundos máximos de espera en el apagado |
+| `TP2_DIR_ESTADOS` | `estados` | Dónde van los volcados |
+
+La medición 3 las usa para barrer configuraciones sin tocar el código.
+
 ### ¿Por qué `put_nowait()` y no `await put()`?
 
 La consigna exige que el `POST` responda inmediatamente. Con la cola llena, `await put()`
@@ -497,72 +515,150 @@ sistema no falla rápido y claro sino que se degrada lento y muere raro.
 
 ## 4. Mediciones
 
+Los tres scripts están en `mediciones/` y se corren desde `TP2/`:
+
+```bash
+python -m mediciones.medicion1_io
+python -m mediciones.medicion2_bloqueo
+python -m mediciones.medicion3_techo
+```
+
+Cada uno levanta por su cuenta los servidores que necesita y los baja al terminar; no hay
+que arrancar nada a mano. Las mediciones 1 y 3 miden contra un servidor local
+(`mediciones/servidor_lento.py`) en vez de contra sitios reales, **a propósito**: la
+latencia de internet varía entre corridas y ensuciaría los números. Con un servidor local
+el retardo lo elegimos nosotros, los resultados se repiten, y se pueden reproducir sin
+conexión.
+
+Todos los números son de una misma máquina (Windows 11, Python 3.13, 8 núcleos lógicos).
+
 ### Medición 1 — Concurrencia de I/O
 
-⏳ **E5** (20 descargas secuenciales vs 20 concurrentes, con el speedup).
+20 descargas de 0,5 s cada una. Cota teórica: secuencial = 10,0 s (la suma),
+concurrente = 0,5 s (la más lenta).
 
-Evidencia preliminar de E2: una tarea `descargar` con 7 URLs, cinco de ellas con un segundo
-de retardo forzado:
+| Estrategia | Total | Cada descarga |
+|---|---|---|
+| **secuencial** (`for` + `await`) | **10,27 s** | 0,514 s |
+| **concurrente** (`gather`) | **0,60 s** | 0,569 s |
+| concurrente, semáforo de 10 | 1,08 s | 0,532 s |
+| concurrente, semáforo de 5 | 2,10 s | 0,523 s |
 
-```
-estado: completada   duración de la tarea: 1.95s
+**Speedup: 17,1x.**
 
-https://httpbin.org/delay/1        200    354 B   1.724s
-https://httpbin.org/delay/1        200    354 B   1.639s
-https://httpbin.org/delay/1        200    354 B   1.637s
-https://httpbin.org/delay/1        200    354 B   1.676s
-https://httpbin.org/delay/1        200    354 B   1.635s
-https://example.com                200    577 B   0.151s
-https://no-existe-esto-12345.com   ConnectError: getaddrinfo
-```
+Interpretación. El secuencial da la suma de las 20 esperas porque `await` significa
+"esperá esto": en un bucle, espera una por una. El `gather` las lanza todas antes de
+esperar, así que el total tiende al de la más lenta.
 
-**1,95 s contra ~8,5 s** que habría tardado secuencialmente (la suma de los tiempos
-individuales). El total tiende al de la más lenta, no a la suma. La URL inexistente devolvió
-su error sin tirar abajo a las otras seis: eso es `return_exceptions=True` en el `gather`.
+El speedup **no es 20x**, y entender por qué importa más que el número: el techo no es la
+cantidad de URLs sino la relación entre la suma de las esperas y la espera más larga, y
+hay costos que no desaparecen (las conexiones, el parseo de las 20 respuestas, el propio
+scheduling del loop). Esos 0,10 s de overhead sobre la cota teórica son eso.
+
+El semáforo muestra el precio de acotar: con 10 permisos hay que hacer 2 tandas (1,08 s) y
+con 5 hay que hacer 4 (2,10 s). Es exactamente lo que se paga para no abrir 20 conexiones
+de golpe, y es lo que usa la tarea `descargar`.
 
 ### Medición 2 — El event loop bloqueado
 
-⏳ **E5** (comparar la latencia de un `GET /tareas` durante un `hashear` pesado, sin
-executor y con executor).
+Una tarea `hashear` de 12.000.000 de iteraciones (≈5 s de CPU), midiendo la latencia de
+`GET /tareas` desde afuera del proceso del servidor mientras corre.
 
-Evidencia preliminar de E2, con executor: cuatro tareas `hashear` de 10.000.000 de
-iteraciones cada una, con 2 workers y 2 procesos:
+| | Duración del cálculo | `GET`s atendidos | Peor `GET` | `GET` medio |
+|---|---|---|---|---|
+| **SIN `run_in_executor`** | 5,10 s | **1** | **4803 ms** | 4803,3 ms |
+| **CON `run_in_executor`** | 4,74 s | **45** | **2 ms** | 1,4 ms |
 
-```
-id          arranco  termino    calculo
-73fe2fe4       0.0s     4.5s       4.5s
-42a847fc       0.0s     4.7s       4.7s
-267480dd       4.5s     9.1s       4.5s
-93013679       4.7s     9.2s       4.5s
+**La API se degradó 2493x: de 2 ms a 4,8 segundos.**
 
-total de pared:            9.2s
-suma de los 4 cálculos:   18.3s
-API durante todo eso:      peor latencia 3.0 ms
-```
+Interpretación. Sin executor el `GET` no se atiende hasta que el cálculo termina. El event
+loop es **un solo hilo** y la corrutina que calcula no tiene ningún `await` donde ceder el
+control — no es contención, es que nunca lo devuelve. Por eso durante los 5 segundos entró
+**un solo** `GET` (el que quedó encolado en el socket) en vez de 45.
 
-Dos lecturas:
+Y el número que más dice: **el cálculo tardó lo mismo en los dos casos** (5,10 s contra
+4,74 s). El executor no acelera nada. Lo único que cambia es que el resto del sistema sigue
+vivo. Asyncio es sobre aprovechamiento, no sobre velocidad.
 
-- **18,3 s de CPU hechos en 9,2 s de pared.** Los dos procesos paralelizan de verdad: cada
-  tarea tardó 4,5 s *esté sola o acompañada*. Con `ThreadPoolExecutor` la segunda habría
-  tardado el doble, porque los threads se turnan el GIL.
-- **La API respondió en 3 ms** mientras dos núcleos estaban al 100%. Ese es el número que
-  resume el TP.
+Lo que no se ve en la tabla pero vale aclarar: durante esos 5 segundos tampoco se habría
+disparado ningún timeout, ni avanzado ningún otro worker, ni aceptado ninguna tarea nueva.
+El servidor entero estaba muerto.
 
-Falta la mitad que importa: la misma medición **sin** executor, llamando a
-`hashear_bloqueante()` directamente desde la corrutina. Ahí el `GET` debería tardar lo que
-falte para que termine el cálculo.
+> **Nota de honestidad.** Para poder medir la mitad "mala" hubo que agregarle a la tarea
+> `hashear` un parámetro `sin_executor` que llama al cálculo directo desde la corrutina.
+> Existe **solo** para esta medición y está documentado como tal en `tareas.py`; en uso
+> normal nunca se usa.
 
 ### Medición 3 — El techo del pool
 
-⏳ **E5.** Los candidatos a ser el cuello de botella, para saber qué mirar:
+La pregunta no tiene una sola respuesta: hay varios cuellos de botella y cada uno se rompe
+distinto. El script los separa en cuatro escenarios.
 
-- la cantidad de workers (crece la espera en cola, no el tiempo de ejecución);
-- el `maxsize` de la cola (no degrada: rechaza con `503`);
-- los descriptores de archivo, con muchas descargas concurrentes (aparece como excepciones);
-- el `max_workers` del pool de procesos, y los núcleos de la máquina;
-- la memoria del `registro`, que nunca se libera.
+**A) Tareas I/O-bound (`esperar` 1 s) con 2 workers**
 
----
+| Tareas | Pared | Latencia media | Espera en cola | Cota teórica (N/2) |
+|---|---|---|---|---|
+| 2 | 1,03 s | 1,01 s | 0,00 s | 1,00 s |
+| 4 | 2,02 s | 1,51 s | 0,50 s | 2,00 s |
+| 8 | 4,08 s | 2,52 s | 1,51 s | 4,00 s |
+| 16 | 8,10 s | 4,54 s | 3,53 s | 8,00 s |
+| 32 | 16,16 s | 8,55 s | 7,55 s | 16,00 s |
+| 64 | 32,31 s | 16,62 s | 15,61 s | 32,00 s |
+
+El techo **no es la cantidad de tareas**: es `CANTIDAD_WORKERS`. Cada tarea sigue tardando
+1 s; lo que crece es la **espera en cola**, lineal con tareas/workers. Y eso no es
+degradación, es encolamiento — que es el comportamiento correcto. El tiempo de pared sigue
+la cota teórica con menos de un 2% de error.
+
+**B) Las mismas tareas con 8 workers**
+
+| Tareas | Pared | Latencia media | Espera en cola |
+|---|---|---|---|
+| 2 | 1,06 s | 1,01 s | 0,00 s |
+| 4 | 1,03 s | 1,01 s | 0,00 s |
+| 8 | 1,03 s | 1,01 s | 0,00 s |
+| 16 | 2,07 s | 1,51 s | 0,50 s |
+| 32 | 4,05 s | 2,51 s | 1,50 s |
+| 64 | 8,09 s | 4,51 s | 3,50 s |
+
+El techo se corrió exactamente donde se esperaba: plano hasta 8 tareas, y de ahí en más
+crece con N/8. El mismo trabajo sale **4x más rápido**. Subir workers es casi gratis
+mientras las tareas sean I/O-bound, porque no consumen CPU mientras esperan — ese es todo
+el argumento de asyncio.
+
+**C) Tareas CPU-bound (`hashear` 4M) con 8 workers pero solo 2 procesos**
+
+| Tareas | Pared | Latencia media | Cálculo medio |
+|---|---|---|---|
+| 1 | 1,86 s | 1,83 s | 1,83 s |
+| 2 | 1,82 s | 1,71 s | 1,79 s |
+| 4 | 3,30 s | 2,43 s | 3,28 s |
+| 8 | 6,65 s | 4,04 s | 6,59 s |
+
+Acá los workers dejan de servir. Con 1 y con 2 tareas el tiempo es el mismo (los 2 procesos
+trabajan en paralelo), y de 2 en adelante se duplica cada vez que se duplica la carga. **8
+workers no hacen nada si hay 2 procesos**: las tareas hacen cola en el executor en vez de
+en la `asyncio.Queue`. El cuello de botella pasó de los workers a `MAX_PROCESOS` y, detrás
+de eso, a los núcleos de la máquina.
+
+**D) Ráfaga más grande que la cola** — 150 tareas de golpe contra una cola de 100:
+
+```
+aceptadas            104
+rechazadas con 503    46
+```
+
+Acá **no hay degradación: hay rechazo**, y es deliberado. (104 y no 100 porque mientras se
+mandaba la ráfaga los workers ya habían drenado algunas.) Con una cola infinita el sistema
+no fallaría rápido y claro: se degradaría lento hasta quedarse sin memoria.
+
+**Respuesta a "si te mando 10.000 tareas de golpe, ¿qué se rompe primero?"**
+
+La cola. Entran 100 y se rechazan 9.900 con `503`, que es el comportamiento buscado. Si la
+cola fuera infinita, el siguiente límite sería la memoria del `registro`, que guarda cada
+ficha con su resultado para siempre y nunca libera nada (limitación 2). Y si las tareas
+fueran `descargar` sin semáforo, antes que eso se agotarían los descriptores de archivo del
+proceso.
 
 ## 5. Conceptos del curso aplicados
 
@@ -644,26 +740,53 @@ Un ejemplo desarrollado, del estilo que pide la consigna:
    esa tarea. Escalar horizontalmente requeriría estado compartido.
 6. **El semáforo de descargas es por tarea, no global.** Diez tareas `descargar`
    simultáneas pueden tener hasta 100 conexiones abiertas entre todas.
-7. ⏳ Completar con lo que aparezca en E5.
+7. **El `registro` no distingue entre tareas viejas y nuevas en `/estadisticas`.** Los
+   promedios son sobre todas las tareas desde que arrancó el proceso, así que una ráfaga
+   vieja sesga el promedio para siempre. Faltaría una ventana móvil.
+8. **El parámetro `sin_executor` de `hashear` existe solo para la medición 2** y no debería
+   estar en una API de producción: deja que un cliente bloquee el servidor a propósito.
 
 ---
 
 ## 7. Lo que aprendí
 
-⏳ **Para escribir al final** (2-3 párrafos personales). Temas sobre los que vale la pena
-volver cuando esté todo andando:
+Lo que más me costó no fue aprender `asyncio` sino **desaprender el TP1**. Ahí los procesos
+corrían de verdad al mismo tiempo, cada uno con su memoria, y para compartir algo había que
+pedirle un `Manager` o un `Value` al sistema y protegerlo con un `Lock`. En este TP el
+`registro` de tareas es un `dict` común, y lo tocan tres lugares distintos: el `POST` cuando
+crea la ficha, el `DELETE` cuando la marca cancelada, y los workers cuando le escriben el
+estado y el resultado. La primera vez que vi eso escrito quise ponerle un `Lock` por reflejo.
+No hace falta, y entender *por qué* fue el salto: hay un solo hilo, así que el control nunca
+cambia de manos en medio de una línea — solo cambia en un `await`. Mientras una secuencia de
+asignaciones no tenga un `await` en el medio, nadie puede verla a mitad de camino.
 
-- Qué cambió en mi forma de pensar la concurrencia entre el TP1 (procesos, memoria
-  compartida, locks) y este (un solo hilo, corrutinas, sin locks).
-- El momento en que entendí que `await` no es "esperar" sino "acá puedo ceder el control", y
-  qué cosas dejaron de parecer mágicas después de eso.
-- Qué me sorprendió de las mediciones: qué número esperaba y qué número salió.
+Lo incómodo es la vuelta de eso. En el TP1 los lugares peligrosos eran visibles: estaban
+donde yo había escrito el `Lock`. Acá los lugares peligrosos son **invisibles**, porque son
+los `await`. Si mañana meto un `await` en el medio de esas tres líneas que escriben la ficha,
+acabo de crear una condición de carrera y el código no se ve distinto. Pasé de proteger datos
+a tener que mirar dónde cedo el control.
+
+El número que no esperaba fue el de la medición 2, y no el que miré primero. Yo esperaba que
+`run_in_executor` hiciera el hash **más rápido** — es lo que uno asume cuando le dicen
+"mandalo a otro proceso". El cálculo tardó **5,10 s sin executor y 4,74 s con executor**:
+prácticamente lo mismo. El executor no acelera nada. Lo que cambia es otra columna de la
+tabla: un `GET /tareas` pasó de **4803 ms a 2 ms**, una degradación de 2493x que desaparece.
+El executor no es una optimización, es un **aislamiento**: saca el trabajo del hilo del event
+loop para que el resto del sistema siga respondiendo mientras ese trabajo tarda exactamente
+lo mismo que antes.
+
+El segundo que me sorprendió fue al revés, por lo mal que quedaba el sistema sin que nada
+fallara: cancelar un hash de 60 millones de iteraciones devuelve `200` en un milisegundo y la
+ficha queda prolijamente `cancelada`, pero el proceso hijo **sigue quemando un núcleo**. Dos
+hashes nuevos pasaron de 5,1 s a 16,2 s por culpa de ese zombi. La API decía que todo estaba
+bien y el sistema estaba 3x más lento. Es la limitación que más me interesa resolver y la
+dejé anotada en [dudas.md](dudas.md).
 
 ---
 
 ## 8. Dudas
 
-Ver [dudas.md](dudas.md) ⏳.
+Ver [dudas.md](dudas.md).
 
 ---
 

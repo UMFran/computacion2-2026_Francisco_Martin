@@ -110,8 +110,13 @@ def hashear_bloqueante(texto, iteraciones):
     return h.hex()
 
 
-async def hashear(texto, iteraciones, pool):
+async def hashear(texto, iteraciones, pool, sin_executor=False):
     """Calcula el hash iterado FUERA del event loop.
+
+    sin_executor=True existe SOLO para la medicion 2: llama al calculo
+    directo desde la corrutina, que es exactamente lo que no hay que
+    hacer. Sirve para medir cuanto se degrada la API cuando el event loop
+    queda bloqueado. En uso normal nunca se usa.
 
     run_in_executor manda la funcion al pool de procesos y devuelve algo
     que se puede esperar. Desde aca se ve como cualquier otro await: la
@@ -124,14 +129,23 @@ async def hashear(texto, iteraciones, pool):
     run_in_executor solo pasa argumentos posicionales; para keyword habria
     que envolver en functools.partial.
     """
-    loop = asyncio.get_running_loop()
     t0 = time.perf_counter()
-    digest = await loop.run_in_executor(pool, hashear_bloqueante,
-                                        texto, iteraciones)
+
+    if sin_executor:
+        # Esto BLOQUEA el event loop todo el calculo: ningun pedido se
+        # atiende, ningun timeout se dispara. Es la mitad "mala" de la
+        # medicion 2.
+        digest = hashear_bloqueante(texto, iteraciones)
+    else:
+        loop = asyncio.get_running_loop()
+        digest = await loop.run_in_executor(pool, hashear_bloqueante,
+                                            texto, iteraciones)
+
     return {
         'hash': digest,
         'iteraciones': iteraciones,
         'segundos': round(time.perf_counter() - t0, 3),
+        'sin_executor': sin_executor,
     }
 
 
@@ -156,6 +170,8 @@ async def ejecutar(tipo, parametros, pool):
     if tipo == 'hashear':
         texto = parametros.get('texto', '')
         iteraciones = int(parametros.get('iteraciones', 100_000))
-        return await hashear(texto, iteraciones, pool)
+        # sin_executor: solo para la medicion 2, ver hashear()
+        return await hashear(texto, iteraciones, pool,
+                             bool(parametros.get('sin_executor', False)))
 
     raise ValueError(f'tipo de tarea desconocido: {tipo}')

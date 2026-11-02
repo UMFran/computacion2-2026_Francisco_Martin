@@ -1,0 +1,10 @@
+# Lo que no tiene que viajar al contexto de build.
+venv/
+__pycache__/
+*.pyc
+estados/
+.git/
+mediciones/
+consigna_TP/
+*.md
+*.html

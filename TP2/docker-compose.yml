@@ -1,7 +1,9 @@
 services:
   tareas:
     build: .
-    container_name: tp2-tareas
+    # Sin container_name fijo: con un nombre fijo, dos copias del proyecto
+    # no pueden convivir y docker falla con "name is already in use".
+    # Asi docker lo nombra <proyecto>-tareas-1 y no hay conflicto.
     ports:
       - "8000:8000"
 
