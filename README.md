@@ -9,7 +9,8 @@
 
 ## Estructura
 
-- `bloque_0/` - Ejercicios del bloque autónomo
+- `Clases_primer_semestre` - Clases con sus respectivos ejercicios del primer semestre
+- `Clases_segundo_semestre` - Clases con sus respectivos ejercicios del segundo semestre
 - `tp1/` - Trabajo Práctico 1
 - `tp2/` - Trabajo Práctico 2
 
@@ -17,6 +18,7 @@
 
 | Componente | Estado |
 |------------|--------|
-| Bloque 0   | Completado |
+| Clases primer semestre   | Completado |
+| Clases segundo semestre   | En proceso |
 | TP1        | Completado |
 | TP2        | Pendiente de evaluación |
