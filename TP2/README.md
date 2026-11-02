@@ -49,6 +49,30 @@ La documentación interactiva que genera FastAPI queda en `http://localhost:8000
 
 ### Cómo se prueba
 
+**La forma más rápida de ver todo andando es la demo guiada.** Con el servidor levantado,
+desde `TP2/`:
+
+```bash
+python demo.py
+```
+
+Recorre los siete momentos del sistema en orden —el reposo, el `POST` que no espera, los dos
+workers como techo, la línea de tiempo, los dos caminos del `DELETE`, el bloqueo del event
+loop y el apagado ordenado— narrando en cada paso qué hay que mirar. Acepta `python demo.py 5`
+para correr un solo paso y `--pausa` para frenar entre uno y otro.
+
+Lo único que necesita es `httpx` en la máquina (`pip install -r requirements.txt`). Si solo se
+usa Docker, se puede correr adentro del contenedor, donde ya está instalado:
+
+```bash
+docker compose exec tareas python demo.py
+```
+
+El guion de la defensa, paso por paso y con los comandos equivalentes a mano, está en
+[DEMO.md](DEMO.md).
+
+A mano, los casos sueltos:
+
 **Encolar una espera y ver el estado:**
 
 ```bash
@@ -196,14 +220,15 @@ TP2/
 │   ├── medicion1_io.py
 │   ├── medicion2_bloqueo.py
 │   └── medicion3_techo.py
+├── demo.py               demo guiada de 7 pasos: `python demo.py`
 ├── Dockerfile
 ├── docker-compose.yml
+├── .dockerignore         deja afuera venv, estados y mediciones del build
 ├── estados/              volcados del apagado (fuera de git)
 ├── requirements.txt
 ├── README.md             ← este informe
+├── DEMO.md               guion de la defensa, paso por paso
 ├── PLAN.md               plan de ejecución por etapas
-├── conceptos_TP2.html    material de estudio: los conceptos y en qué clase leerlos
-├── prompt_tutor_TP2.md   el prompt de tutor de la cátedra, adaptado a este TP
 └── dudas.md              dudas abiertas y resueltas
 ```
 

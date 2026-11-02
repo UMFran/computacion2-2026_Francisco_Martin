@@ -10,6 +10,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
 
+# La demo guiada viaja en la imagen para poder correrla con
+# `docker compose exec tareas python demo.py`, sin instalar nada en el host.
+# Usa httpx, que ya esta entre las dependencias.
+COPY demo.py .
+
 EXPOSE 8000
 
 # uvicorn recibe SIGTERM directo porque es el PID 1 del contenedor (forma
