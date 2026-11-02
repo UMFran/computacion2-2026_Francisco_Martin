@@ -32,7 +32,7 @@ Los estados posibles son `pendiente`, `ejecutando`, `completada`, `fallida` y `c
 
 ### Cómo se levanta
 
-Con Docker (⏳ E4):
+Con Docker, que es la forma recomendada:
 
 ```bash
 docker compose up --build
@@ -89,7 +89,22 @@ curl -w '\ntiempo: %{time_total}s\n' localhost:8000/tareas
 curl 'localhost:8000/tareas?estado=ejecutando'
 ```
 
-**Cancelar una tarea** (⏳ E3):
+**Probar el apagado ordenado** (encolar trabajo y mandar `SIGTERM`):
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -s -X POST localhost:8000/tareas -H 'Content-Type: application/json'     -d '{"tipo":"esperar","parametros":{"segundos":3}}'
+done
+
+docker compose stop          # manda SIGTERM
+docker compose logs --tail 20
+ls estados/                  # estado_<timestamp>.json
+```
+
+En el log se ve la secuencia: deja de aceptar tareas, los workers se retiran
+ordenadamente, y el estado se vuelca a JSON.
+
+**Cancelar una tarea:**
 
 ```bash
 curl -X DELETE localhost:8000/tareas/fe926941
@@ -102,8 +117,8 @@ curl -X DELETE localhost:8000/tareas/fe926941
 | `POST` | `/tareas` | Encola una tarea. Devuelve `id` y estado inicial | ✅ |
 | `GET` | `/tareas` | Lista las tareas, con filtro opcional `?estado=` | ✅ |
 | `GET` | `/tareas/{id}` | Estado y resultado de una tarea | ✅ |
-| `DELETE` | `/tareas/{id}` | Cancela una tarea encolada o en ejecución | ⏳ E3 |
-| `GET` | `/estadisticas` | Totales por estado, tiempos promedio, workers ocupados | ⏳ E3 |
+| `DELETE` | `/tareas/{id}` | Cancela una tarea encolada o en ejecución | ✅ |
+| `GET` | `/estadisticas` | Totales por estado, tiempos promedio, workers ocupados | ✅ |
 
 Códigos de estado que devuelve:
 
@@ -112,7 +127,7 @@ Códigos de estado que devuelve:
 | `201 Created` | El `POST` encoló bien |
 | `200 OK` | Los `GET` y el `DELETE` que cancela |
 | `404 Not Found` | El `id` no existe |
-| `409 Conflict` | `DELETE` de una tarea que ya terminó (⏳ E3) |
+| `409 Conflict` | `DELETE` de una tarea que ya terminó |
 | `422 Unprocessable Entity` | El cuerpo no valida. Lo pone Pydantic solo |
 | `503 Service Unavailable` | La cola está llena |
 
@@ -173,12 +188,13 @@ TP2/
 ├── app/
 │   ├── __init__.py
 │   ├── modelos.py        57 líneas
-│   ├── tareas.py        155 líneas
-│   ├── gestor.py        157 líneas
-│   └── main.py           79 líneas
+│   ├── tareas.py        161 líneas
+│   ├── gestor.py        361 líneas
+│   └── main.py          118 líneas
 ├── mediciones/           ⏳ E5
-├── Dockerfile            ⏳ E4
-├── docker-compose.yml    ⏳ E4
+├── Dockerfile
+├── docker-compose.yml
+├── estados/              volcados del apagado (fuera de git)
 ├── requirements.txt
 ├── README.md             ← este informe
 ├── PLAN.md               plan de ejecución por etapas
@@ -229,7 +245,9 @@ infinito, y `task_done()` en un `finally`.
 | `worker(wid)` | El bucle infinito: `await cola.get()` → ejecutar → `task_done()` |
 | `ejecutar_una(tid)` | Ejecuta una tarea y deja el resultado en su ficha. Acá está el manejo de errores |
 | `encolar(pedido)` | Crea la ficha y mete el `id` en la cola. No espera nada |
+| `cancelar(tid)` | Los dos caminos del `DELETE`: marcar la ficha si está en cola, o `cancel()` del Task si está corriendo |
 | `obtener(tid)` / `listar(estado)` | Lectura del registro para los `GET` |
+| `estadisticas()` | Totales por estado, promedios de espera y ejecución, workers ocupados y tamaño de la cola |
 
 #### `app/main.py` — la capa HTTP
 
@@ -293,23 +311,81 @@ Dos detalles de implementación que no son casuales:
 
 ### ¿Cómo implementé la cancelación, y qué pasa con los recursos a medio usar?
 
-⏳ **E3.** El diseño previsto:
-
 `cancel()` no mata nada: le pide al loop que, la próxima vez que esa corrutina esté en un
-`await`, en vez del resultado le **lance** `CancelledError` desde ese punto. De ahí salen
-dos caminos distintos para el `DELETE`:
+`await`, en vez del resultado le **lance** `CancelledError` desde ese punto. Sobre eso se
+construyen los dos caminos del `DELETE`.
 
-- **Tarea `pendiente`** (todavía en la cola): no hay Task que cancelar. Se la marca
-  `cancelada` en el registro, y cuando un worker la saque la descarta sin ejecutarla. Eso ya
-  está implementado en `ejecutar_una()`: el chequeo del estado al principio.
-- **Tarea `ejecutando`**: hay que haber guardado el `asyncio.Task` *de la tarea* para poder
-  cancelarlo. Cancelar el Task del worker mataría al worker, no a la tarea.
+**El problema de diseño:** si el worker hiciera `await ejecutar_una(tid)`, el único
+`asyncio.Task` existente sería el del worker — y cancelarlo mataría al worker, no a la
+tarea. Por eso el worker envuelve cada tarea en un Task aparte y lo guarda en el dict
+`ejecutando`:
 
-Sobre los recursos: el `AsyncClient` de `descargar` se crea con `async with`, así que el
-`CancelledError` propaga por el `__aexit__` y **las conexiones abiertas se cierran solas**.
-Esa es la razón de haberlo puesto adentro de la tarea en vez de compartirlo. El
-`task_done()` de la cola va en un `finally`, porque si se saltea el `join()` del apagado
-espera para siempre.
+```python
+tid = await cola.get()
+try:
+    tarea_actual = asyncio.create_task(ejecutar_una(tid))
+    ejecutando[tid] = tarea_actual
+    try:
+        await tarea_actual
+    except asyncio.CancelledError:
+        if tid not in cancelados_por_delete:
+            raise                 # nos cancelaron al WORKER: nos vamos
+        cancelados_por_delete.discard(tid)   # cancelaron la TAREA: seguimos
+finally:
+    ejecutando.pop(tid, None)
+    cola.task_done()
+```
+
+**Los dos casos del `DELETE`:**
+
+- **Tarea `pendiente`** (todavía en la cola): no hay Task que cancelar. Solo se marca la
+  ficha como `cancelada`, y cuando un worker la saque la descarta sin ejecutarla — el
+  chequeo está al principio de `ejecutar_una()`.
+- **Tarea `ejecutando`**: se busca su Task en `ejecutando` y se le hace `cancel()`.
+
+**Por qué hace falta el set `cancelados_por_delete`:** una cancelación de tarea y una
+cancelación del worker llegan como **el mismo** `CancelledError`, y el worker tiene que
+reaccionar distinto a cada una (seguir vivo en el primer caso, irse en el segundo). El set
+registra qué ids pidió cancelar el `DELETE` y es lo que permite distinguirlas.
+
+**Por qué no hay un hueco entre los dos casos:** entre que `cola.get()` devuelve el `id` y
+que se guarda en `ejecutando` **no hay ningún `await`**, así que el `DELETE` no puede caer
+en el medio: o encuentra la tarea en la cola, o la encuentra en `ejecutando`. Nunca en un
+limbo. Es la misma propiedad por la que no hace falta un `Lock`.
+
+**Los recursos a medio usar:**
+
+- El `AsyncClient` de `descargar` se crea con `async with`, así que el `CancelledError`
+  propaga por el `__aexit__` y **las conexiones abiertas se cierran solas**. Esa es la razón
+  de haberlo puesto adentro de la tarea en vez de compartirlo en `app.state`.
+- El `task_done()` va en un `finally`, porque si se saltea, el `join()` del apagado espera
+  para siempre.
+- El `ejecutando.pop()` también va en el `finally`: si no, `/estadisticas` reportaría para
+  siempre un worker ocupado que no existe.
+- `CancelledError` **se relanza siempre** en `ejecutar_una()`. Tragarla dejaría al resto del
+  sistema creyendo que la tarea sigue viva.
+
+**Y el límite del mecanismo**, que es importante poder decir antes de que lo pregunten: la
+cancelación se entrega *en un `await`*. Una tarea sin `await`s por delante no se entera. Un
+`hashear` que ya arrancó en un proceso hijo queda marcado `cancelada` y el worker se
+desentiende, pero el proceso sigue quemando CPU hasta terminar. Está medido en la
+sección 6.
+
+### ¿Cómo implementé los timeouts?
+
+```python
+async with asyncio.timeout(ficha['timeout']):
+    ficha['resultado'] = await tareas.ejecutar(...)
+```
+
+Un timeout **es una cancelación con reloj**, no un mecanismo aparte: al vencer, cancela la
+corrutina de adentro con el mismo `cancel()` de antes, y convierte el `CancelledError`
+resultante en `TimeoutError` para quien espera afuera. Por eso el `except TimeoutError` va
+antes del `except asyncio.CancelledError`, y por eso valen las mismas limitaciones: una
+tarea CPU-bound en un proceso hijo tampoco se entera del timeout.
+
+Al vencer, la tarea pasa a `fallida` con el motivo, como pide la consigna. El timeout es
+configurable por tarea (campo `timeout` del `POST`, 30 s por omisión).
 
 ### ¿Qué pasa si un worker lanza una excepción no capturada?
 
@@ -340,6 +416,56 @@ siguió tomando tareas después.
 Para que haya **una sola fuente de verdad**. El `registro` es el único lugar donde vive el
 estado. Si la cola llevara copias de las fichas habría dos versiones del estado, y un
 `DELETE` sobre una tarea todavía encolada modificaría una copia que el worker no va a mirar.
+
+### ¿Cómo implementé el apagado ordenado?
+
+Los cuatro pasos que pide la consigna están en `gestor.apagar()`:
+
+1. `aceptando = False`, y el `POST` empieza a responder `503`.
+2. Se mete un **centinela por worker** en la cola. Cada worker consume el suyo y se
+   retira — pero recién *después* de terminar lo que tenía entre manos, así que
+   **ninguna tarea queda a medias**. Es la variante que `clase21/cola.py` señala como
+   "lo que el TP2 pide para SIGTERM".
+3. `await asyncio.wait_for(asyncio.gather(*workers), ESPERA_APAGADO)` — la espera **con
+   límite**. Si se agota, `wait_for` cancela el gather, que cancela a los workers: el
+   centinela es el camino amable y la cancelación es el plan B.
+4. `volcar_estado()` escribe `estados/estado_<timestamp>.json` con el registro completo.
+
+Que la ficha sea un `dict` y no un objeto Pydantic paga justamente acá: ya es JSON, no
+hay que serializar nada a mano.
+
+Al arrancar, `reportar_volcado_previo()` busca volcados anteriores y los reporta por log
+con la cantidad de tareas que contenían. **No restaura el estado** — la consigna pide
+reportarlo, no recargarlo.
+
+Un detalle de alcance que conviene aclarar: el centinela se encola *al final*, así que
+los workers procesan todo lo que había antes que él. O sea que el apagado espera a toda
+la cola, no solo a lo que estaba en ejecución — más generoso que lo que pide la consigna,
+y acotado igual por el límite de tiempo.
+
+### ¿Por qué el apagado está en el `lifespan` y no en un handler de señal propio?
+
+Esta es la decisión que más se desvía de lo que sugiere el enunciado, así que vale
+explicarla: **uvicorn ya atrapa `SIGTERM` y `SIGINT`**. Al recibirlos deja de aceptar
+conexiones, espera a los pedidos en vuelo, y recién entonces corre la parte de abajo del
+`yield` del `lifespan` — que es donde está `apagar()`.
+
+Instalar nuestro propio handler con `loop.add_signal_handler()` **sobreescribiría el de
+uvicorn**, y el servidor no se apagaría nunca: el handler es uno por señal, no una cadena.
+
+Como beneficio extra, así funciona igual en Windows, donde `add_signal_handler()` no
+existe (nota 4.1 de la consigna). El concepto de **async-signal-safe** igual aplica y es
+lo que uvicorn hace internamente: el handler no hace el trabajo, solo le avisa al loop,
+que lo ejecuta cuando le toca.
+
+En el `docker-compose.yml` hay un detalle que importa: `stop_grace_period: 20s`. Docker
+manda `SIGTERM` y espera —por omisión 10 s— antes de mandar `SIGKILL`, que **no se puede
+atrapar**. Como `ESPERA_APAGADO` es 10 s, con el valor por omisión el `SIGKILL` llegaría
+justo encima y el volcado no alcanzaría a escribirse.
+
+Y en el `Dockerfile`, el `CMD` está en forma **exec** (lista de strings, sin shell): así
+uvicorn es el PID 1 y recibe la señal directo. Con la forma shell, el shell sería el PID 1
+y no se la pasaría.
 
 ### ¿Por qué `httpx` y no `aiohttp`?
 
@@ -457,7 +583,13 @@ falte para que termine el cálculo.
 | `hashear_bloqueante` a nivel de módulo | El pickle entre procesos | 22 |
 | `except Exception` que no atrapa `CancelledError` | El bug silencioso de las excepciones en Tasks | 22 |
 | `task_done()` en un `finally` | La cuenta de la cola y el `join()` | 21 |
+| `tarea.cancel()` en `gestor.cancelar()` | `CancelledError` se entrega en el próximo `await` | 20 |
+| `async with asyncio.timeout()` | Un timeout es una cancelación con reloj | 20 |
+| El Task por tarea, aparte del worker | Corrutina vs Task: qué agrega `create_task` | 18 y 21 |
 | La guarda `if __name__ == '__main__'` | `fork` vs `spawn` | 8 |
+| El centinela del apagado en `apagar()` | Apagado ordenado: centinela vs cancelación | 20 y 21 |
+| `SIGTERM`/`SIGINT` atrapados por uvicorn | Catálogo de señales, async-signal-safe | TP1 |
+| `wait_for(gather(*workers), ...)` | Esperar con límite | 20 |
 
 Un ejemplo desarrollado, del estilo que pide la consigna:
 
@@ -474,22 +606,45 @@ Un ejemplo desarrollado, del estilo que pide la consigna:
 
 ## 6. Limitaciones conocidas
 
-1. **Una tarea `hashear` que ya arrancó no se puede cancelar.** La cancelación se entrega en
-   un `await`, y el cálculo corre en un proceso hijo sin ningún punto de suspensión. El
-   `DELETE` la va a marcar `cancelada` y el worker se desentiende, pero el proceso sigue
-   quemando CPU hasta terminar. Lo mismo vale para el timeout.
+1. **Una tarea `hashear` que ya arrancó no se puede cancelar**, y eso roba capacidad del
+   pool. La cancelación se entrega en un `await`, y el cálculo corre en un proceso hijo sin
+   ningún punto de suspensión: el `DELETE` marca la ficha `cancelada` y el worker se libera
+   al instante, pero el proceso sigue calculando.
+
+   Medido, aprovechando que el pool tiene 2 procesos: se toma como referencia el tiempo de
+   dos `hashear` de 10.000.000 de iteraciones, y se repite lo mismo después de haber
+   cancelado un `hashear` de 60.000.000.
+
+   | | Pared | Cada cálculo |
+   |-|-------|--------------|
+   | Con los 2 procesos libres | **5,1 s** | 4,44 s · 4,96 s |
+   | Después de cancelar un hash de 60M | **16,2 s** | 7,91 s · 16,07 s |
+
+   Tres veces más lento. El cálculo cancelado siguió consumiendo un núcleo, así que los dos
+   nuevos tuvieron que competir por lo que quedaba. El `DELETE` respondió en 1 ms y la ficha
+   quedó `cancelada` — desde la API todo parecía correcto, y el costo estaba escondido en el
+   pool.
+
+   Mitigaciones posibles, ninguna implementada: partir el cálculo en bloques con un `await`
+   entre ellos para darle puntos de cancelación; o matar el proceso hijo con
+   `pool.shutdown(cancel_futures=True)` y recrear el pool, que es brutal porque se lleva
+   también las otras tareas en vuelo.
 2. **El `registro` crece para siempre.** Cada tarea queda guardada en memoria con su
    resultado y nunca se libera. 10.000 tareas `descargar` con sus respuestas es memoria que
    no vuelve. Faltaría una política de expiración.
 3. **El estado no sobrevive al reinicio.** Es lo que pide la consigna (sin base de datos),
-   pero el volcado a JSON del apagado es solo para inspección: al arrancar se reporta por
-   log y no se recarga.
-4. **Un solo proceso de uvicorn.** Con varios workers de uvicorn cada uno tendría su propia
+   pero conviene ser explícito: el volcado a JSON es solo para inspección. Al arrancar se
+   reporta por log y **no se recarga**, así que las tareas que quedaron `pendiente` en el
+   volcado no se reencolan: se pierden.
+4. **El apagado ordenado no se puede probar en Windows sin Docker.** `add_signal_handler`
+   no existe ahí y la entrega de `SIGTERM` es distinta. La lógica de `apagar()` se probó
+   llamándola directamente; la ruta de la señal se verifica en el contenedor.
+5. **Un solo proceso de uvicorn.** Con varios workers de uvicorn cada uno tendría su propia
    cola y su propio registro en memoria, y un `GET` podría caer en el proceso que no tiene
    esa tarea. Escalar horizontalmente requeriría estado compartido.
-5. **El semáforo de descargas es por tarea, no global.** Diez tareas `descargar`
+6. **El semáforo de descargas es por tarea, no global.** Diez tareas `descargar`
    simultáneas pueden tener hasta 100 conexiones abiertas entre todas.
-6. ⏳ Completar con lo que aparezca en E3–E5.
+7. ⏳ Completar con lo que aparezca en E5.
 
 ---
 

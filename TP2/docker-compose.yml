@@ -1,0 +1,17 @@
+services:
+  tareas:
+    build: .
+    container_name: tp2-tareas
+    ports:
+      - "8000:8000"
+
+    # Los volcados del apagado quedan visibles desde el host.
+    volumes:
+      - ./estados:/app/estados
+
+    # CLAVE: docker manda SIGTERM y espera este tiempo antes de mandar
+    # SIGKILL, que no se puede atrapar. El apagado ordenado espera hasta
+    # ESPERA_APAGADO=10s a las tareas en curso, asi que con el default de
+    # 10s el SIGKILL llegaria justo encima y el volcado no alcanzaria a
+    # escribirse.
+    stop_grace_period: 20s
